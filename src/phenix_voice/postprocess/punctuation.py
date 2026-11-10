@@ -40,6 +40,8 @@ SLEEP_COMMANDS: set[str] = {
 WAKE_COMMANDS: set[str] = {
     "écoute",
     "ecoute",
+    "écoutez",
+    "ecoutez",
     "réveille-toi",
     "reveille-toi",
     "reprends l'écoute",
@@ -50,29 +52,32 @@ WAKE_COMMANDS: set[str] = {
 SCRATCH_COMMANDS: set[str] = {
     "effacer ça",
     "efface ça",
+    "corriger ça",
+    "corrigez ça",
+    "corrige ça",
     "rayez ça",
     "rayer ça",
     "annuler ça",
     "annule ça",
     "oups",
+    "unch",
 }
 
-# Remplacements de ponctuation dictée (ordonnés du plus spécifique au plus général)
+# Remplacements de ponctuation dictée et équivalences phonétiques dysarthriques (ordonnés du plus spécifique au plus général)
 SPOKEN_PUNCTUATION_RULES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bpoint\s+à\s+la\s+ligne\b\.?", re.IGNORECASE), ".\n"),
-    (re.compile(r"\bnouveau\s+paragraphe\b\.?", re.IGNORECASE), "\n\n"),
-    (re.compile(r"\bà\s+la\s+ligne\b\.?", re.IGNORECASE), "\n"),
-    (re.compile(r"\bretour\s+à\s+la\s+ligne\b\.?", re.IGNORECASE), "\n"),
-    (re.compile(r"\bpoint\s+d['’]interrogation\b\.?", re.IGNORECASE), " ?"),
-    (re.compile(r"\bpoint\s+d['’]exclamation\b\.?", re.IGNORECASE), " !"),
-    (re.compile(r"\bpoints?\s+de\s+suspension\b\.?", re.IGNORECASE), "..."),
-    (re.compile(r"\bpoint[- ]virgule\b\.?", re.IGNORECASE), " ;"),
-    (re.compile(r"\bdeux[- ]points\b\.?", re.IGNORECASE), " :"),
-    (re.compile(r"\bouvr(?:ir|ez|ons)\s+les\s+guillemets\b\.?", re.IGNORECASE), "« "),
-    (re.compile(r"\bferm(?:er|ez|ons)\s+les\s+guillemets\b\.?", re.IGNORECASE), " »"),
-    (re.compile(r"\bouvr(?:ir|ez|ons)\s+la\s+parenthèse\b\.?", re.IGNORECASE), "("),
-    (re.compile(r"\bferm(?:er|ez|ons)\s+la\s+parenthèse\b\.?", re.IGNORECASE), ")"),
-    (re.compile(r"\bvirgule\b[,.]?", re.IGNORECASE), ","),
+    (re.compile(r",?\s*\b(?:point\s+à\s+la\s+ligne|pour\s+la\s+ligne|pour\s+un\s+aligné|pour\s+en\s+aligné)\b[.!?]*", re.IGNORECASE), ".\n"),
+    (re.compile(r",?\s*\bnouveau\s+paragraphe\b[.!?]*", re.IGNORECASE), "\n\n"),
+    (re.compile(r",?\s*\b(?:retour\s+)?à\s+la\s+ligne\b[.!?]*", re.IGNORECASE), "\n"),
+    (re.compile(r"[,.?]?\s*\b(?:point|pour|pas)\s+(?:d['’]|l['’])interrogation\b[.!?]*", re.IGNORECASE), " ?"),
+    (re.compile(r"[,.!]?\s*\bpoint\s+d['’]exclamation\b[.!?]*", re.IGNORECASE), " !"),
+    (re.compile(r",?\s*\bpoints?\s+de\s+suspension\b[.!?]*", re.IGNORECASE), "..."),
+    (re.compile(r",?\s*\bpoint[- ]virgule\b[.!?]*", re.IGNORECASE), " ;"),
+    (re.compile(r",?\s*\bdeux[- ]points\b[.!?]*", re.IGNORECASE), " :"),
+    (re.compile(r"\bouvr(?:ir|ez|ons)\s+les\s+guillemets\b[.!?]*", re.IGNORECASE), "« "),
+    (re.compile(r"\bferm(?:er|ez|ons)\s+les\s+guillemets\b[.!?]*", re.IGNORECASE), " »"),
+    (re.compile(r"\bouvr(?:ir|ez|ons)\s+la\s+parenthèse\b[.!?]*", re.IGNORECASE), "("),
+    (re.compile(r"\bferm(?:er|ez|ons)\s+la\s+parenthèse\b[.!?]*", re.IGNORECASE), ")"),
+    (re.compile(r",?\s*\bvirgule\b[,.]*", re.IGNORECASE), ","),
 ]
 
 

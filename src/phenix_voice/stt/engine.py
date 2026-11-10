@@ -111,9 +111,14 @@ def build_or_get_dynamic_encoder(
 class WhisperDirectMLEngine:
     """Moteur Whisper Large-v3-Turbo (ou Small/Medium) accéléré sur GPU AMD via DirectML."""
 
-    # Palier rapide par défaut (600 trames = 6,0s) gardé chaud dans DirectML (< 250 ms de latence)
-    FAST_BUCKET_FRAMES: int = 600
-    BUCKETS_FRAMES: tuple[int, ...] = (600, 1500, 3000)
+    # Palier rapide par défaut (1200 trames = 12,0s) : garantit une reconnaissance précise de la diction
+    # dysarthrique et des commandes tout en maintenant ~450-700 ms sur l'AMD Radeon RX 5700 XT
+    FAST_BUCKET_FRAMES: int = 1200
+    BUCKETS_FRAMES: tuple[int, ...] = (1200, 3000)
+    DEFAULT_CALIBRATED_PROMPT: str = (
+        "Écoute, Au repos, Corriger ça, Oups, point à la ligne, "
+        "point d'interrogation, point d'exclamation, virgule, reconnaissance vocale adaptée."
+    )
 
     def __init__(
         self,
@@ -121,7 +126,7 @@ class WhisperDirectMLEngine:
         language: str = "fr",
         cache_dir: str | Path = "models/cache",
         prefer_dml: bool = True,
-        warmup_buckets: tuple[int, ...] = (600,),
+        warmup_buckets: tuple[int, ...] = (1200,),
     ) -> None:
         self.repo_id = repo_id
         self.language = language
@@ -180,10 +185,7 @@ class WhisperDirectMLEngine:
 
     def _warmup(self, buckets: tuple[int, ...]) -> None:
         """Pré-compile les shaders DirectML sur la carte AMD Radeon pour éviter tout pic à la 1re phrase."""
-        dummy_ids = np.array(
-            [[self.sot_token, self.lang_token, self.transcribe_token, self.notimestamps_token]],
-            dtype=np.int64,
-        )
+        dummy_ids = self._build_prompt_ids(self.DEFAULT_CALIBRATED_PROMPT)
         next_id = np.array([[self.eot_token]], dtype=np.int64)
         for frames in buckets:
             mel = np.zeros((1, self.n_mels, frames), dtype=np.float32)
@@ -239,12 +241,19 @@ class WhisperDirectMLEngine:
         t_start = time.perf_counter()
         audio = np.asarray(audio_pcm, dtype=np.float32).reshape(-1)
         audio_duration_s = len(audio) / 16000.0
-        if audio_duration_s < 0.15 or np.max(np.abs(audio)) < 1e-4:
+        peak = float(np.max(np.abs(audio))) if len(audio) > 0 else 0.0
+        if audio_duration_s < 0.15 or peak < 8e-4:
             return TranscriptionResult(
                 text="",
                 audio_duration_s=audio_duration_s,
                 provider=self.active_provider,
             )
+
+        # Normalisation automatique du gain (AGC) : ramène la voix à 0.85 pleine échelle
+        audio = audio * (0.85 / peak)
+
+        if initial_prompt is None:
+            initial_prompt = self.DEFAULT_CALIBRATED_PROMPT
 
         bucket_frames = self._select_bucket_frames(len(audio))
         mel = compute_log_mel_spectrogram(

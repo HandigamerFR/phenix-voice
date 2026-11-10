@@ -10,6 +10,7 @@ import numpy as np
 from PySide6.QtWidgets import QApplication
 
 from phenix_voice.audio.capture import MicrophoneCapture
+from phenix_voice.audio.fingerprints import AcousticCommandProtector
 from phenix_voice.audio.vad import BreathSegmenter
 from phenix_voice.os_control.hotkeys import GlobalInputMonitor
 from phenix_voice.os_control.injector import DirectTextInjector
@@ -37,6 +38,7 @@ class PhenixVoiceController:
 
         self.injector = DirectTextInjector()
         self.processor = HybridPunctuationProcessor()
+        self.protector = AcousticCommandProtector()
         self.engine: WhisperDirectMLEngine | None = None
 
         self._segment_queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=32)
@@ -128,17 +130,23 @@ class PhenixVoiceController:
             if not self.is_sleeping:
                 self.hud.set_state(MicState.TRANSCRIBING)
 
+            # 1. Court-circuit prioritaire par empreinte acoustique directe sur les commandes courtes
+            fp_match = self.protector.match_command(segment)
             result = self.engine.transcribe(
                 segment, initial_prompt=self.initial_prompt
             )
 
-            if not result.text:
+            effective_text = result.text
+            if fp_match is not None and (not effective_text or result.confidence < 0.68):
+                effective_text = fp_match[0]
+
+            if not effective_text:
                 if not self.is_sleeping:
                     self.hud.set_state(MicState.LISTENING)
                 continue
 
             processed = self.processor.process(
-                result.text, is_sleeping=self.is_sleeping
+                effective_text, is_sleeping=self.is_sleeping
             )
 
             if processed.intent == VoiceIntentType.SLEEP:
@@ -201,7 +209,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--prompt",
-        default="Phénix Voice, OpenCode, Windows, dictée vocale.",
+        default=None,
         help="Prompt lexical initial pour orienter le vocabulaire",
     )
     parser.add_argument(

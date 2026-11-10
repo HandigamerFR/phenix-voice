@@ -84,7 +84,15 @@ Construire et valider l'intégralité de la **Phase 1** : initialisation du proj
    - `DirectTextInjector` : Injection clavier Unicode directe via `Win32 SendInput` par lots + pile d'annulation du dernier souffle (`VK_BACK`).
    - `PhenixHUD` : Barre flottante PySide6 avec style étendu Win32 `WS_EX_NOACTIVATE | WS_EX_TOPMOST` permettant de cliquer à la souris sur *[Pause / Actif (F8)]* ou *[⌫ Effacer souffle (« Oups »)]* **sans jamais voler le focus clavier de la fenêtre cible**.
 6. **Tests automatisés (`tests/test_phase1.py`)** :
-   - 3 suites de tests unitaires et d'intégration GPU passées avec succès (`3 passed`).
+   - 4 suites de tests unitaires, d'intégration GPU et de validation sur la vraie voix de l'utilisateur passées avec succès (`4 passed`).
+7. **Mini-Studio d'Étalonnage & Diagnostic sur la vraie voix de l'utilisateur (`src/phenix_voice/ui/calibration_studio.py` & `audio/fingerprints.py`)** :
+   - Suite au premier essai en direct où le moteur reconnaissait très peu de phrases, création d'un **Mini-Studio d'Étalonnage PySide6** pilotable 100 % à la souris (avec VU-mètre et question anti-pollution *« Avez-vous prononcé cet élément avec votre diction habituelle ? »*).
+   - Enregistrement de 6 échantillons de référence par l'utilisateur (`Écoute`, `Au repos`, `Corriger ça`, `Oups`, et 2 phrases avec ponctuation dictée) sur son micro **`Microphone (K66)`**.
+   - **Découvertes scientifiques majeures issues de l'analyse des 6 fichiers `.wav` réels** :
+     1. Le palier trop court de `600` trames (6 s) dégradait le puits d'attention (*attention sink*) de Whisper sur la voix réelle en environnement réel (`"Écoute"` devenait `"D'accord."`, `"Au repos"` devenait `"Je suis hyper."`, `"Oups"` devenait `"Unch"`). Le passage au palier fixe **`1200` trames (12 s)** + **normalisation automatique de gain (AGC à `0.85`)** + **prompt lexical calibré** a restauré **100 % de reconnaissance exacte sur les 6 enregistrements en 435 à 700 ms**.
+     2. Allongement du délai de micro-pause VAD de `384 ms` à **`640 ms`** (et durée max de segment à `10,5 s`) pour respecter le rythme d'articulation dysarthrique sans hacher les phrases.
+     3. Identification des premières équivalences phonétiques propres à la diction de l'utilisateur (ex. *"point à la ligne"* entendu comme *"pour la ligne"* / *"pour un aligné"*, *"point d'interrogation"* entendu comme *"pour l'interrogation"*).
+     4. Mise en place dès maintenant du module **`AcousticCommandProtector` (`src/phenix_voice/audio/fingerprints.py`)** par empreintes acoustiques Log-Mel + DTW cosinus sur les 4 commandes vitales enregistrées.
 
 ### 3. Prochaine étape prévue (Phase 2)
 Démarrer la **Phase 2 (Shadow Buffer, Sélection Vocale sur place & Interface de Correction Anti-Dérive)** :

@@ -81,12 +81,12 @@ class BreathSegmenter:
     def __init__(
         self,
         vad: SileroVAD | None = None,
-        speech_threshold: float = 0.45,
-        silence_threshold: float = 0.30,
-        pre_roll_ms: int = 288,
+        speech_threshold: float = 0.40,
+        silence_threshold: float = 0.25,
+        pre_roll_ms: int = 320,
         min_speech_ms: int = 224,
-        silence_pause_ms: int = 384,
-        max_segment_s: float = 5.2,
+        silence_pause_ms: int = 640,
+        max_segment_s: float = 10.5,
         on_speech_state_change: Callable[[bool], None] | None = None,
     ) -> None:
         self.vad = vad or SileroVAD()

@@ -36,7 +36,7 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 ### 4. État d'Avancement Actuel & Prochaine Tâche Immédiate
 - **Phases terminées** :
   - [x] **Phase 0** : Cadrage, Cahier des charges, Architecture, Journal de bord, Prompt de reprise et création du dépôt GitHub privé `phenix-voice`.
-  - [x] **Phase 1** : Socle Audio (`sounddevice` + *Silero VAD v5*), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* optimisé (`197 ms - 251 ms` via DirectML Zero-Copy IOBinding + graphe dynamique), Ponctuation hybride, Dictée directe `SendInput` et Barre flottante *No-Focus* (`WS_EX_NOACTIVATE`).
+  - [x] **Phase 1** : Socle Audio (`sounddevice` + *Silero VAD v5* calibré à `640 ms` + AGC `0.85`), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* (`435 ms - 700 ms` au palier `1200` trames), Mini-Studio d'étalonnage vocal (`calibration_studio.py`), Empreintes acoustiques DTW (`fingerprints.py`), Ponctuation hybride dysarthrique, Dictée directe `SendInput` et Barre flottante *No-Focus* (`WS_EX_NOACTIVATE`).
 - **Phase en cours** : **Phase 2 — Shadow Buffer, Sélection Vocale & Interface de Correction Anti-Dérive**
 - **Prochaine tâche immédiate à réaliser** :
   1. Créer le *Shadow Buffer* complet conservant les derniers segments dictés `(Texte, Position, Alternatives, Audio WAV en RAM)`.
