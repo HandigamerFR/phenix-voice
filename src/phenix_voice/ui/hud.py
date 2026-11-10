@@ -463,7 +463,11 @@ class PhenixHUD(QWidget):
         self.status_badge.setStyleSheet(
             f"background-color: {color}; color: white; padding: 4px 10px; border-radius: 6px;"
         )
-        if state in (MicState.LOADING, MicState.SLEEPING, MicState.MUTED):
+        # Ne pas écraser la transcription/correction visible si un panneau de correction est ouvert
+        if (
+            state in (MicState.LOADING, MicState.SLEEPING, MicState.MUTED)
+            and not self.corr_frame.isVisible()
+        ):
             self.transcript_label.setText(default_hint)
 
     def _apply_transcript_slot(

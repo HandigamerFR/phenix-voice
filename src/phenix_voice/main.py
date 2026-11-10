@@ -133,7 +133,6 @@ class PhenixVoiceController:
         self.is_muted = not self.is_muted
         if self.is_muted:
             self.capture.set_paused(True)
-            self._close_correction_bar()
             self.hud.set_state(MicState.MUTED)
         else:
             self.is_sleeping = False
@@ -147,7 +146,6 @@ class PhenixVoiceController:
             return
         self.is_muted = True
         self.capture.set_paused(True)
-        self._close_correction_bar()
         self.hud.set_state(MicState.MUTED)
 
     def toggle_sleep(self) -> None:
@@ -164,7 +162,6 @@ class PhenixVoiceController:
 
         self.is_sleeping = not self.is_sleeping
         if self.is_sleeping:
-            self._close_correction_bar()
             self.hud.set_state(MicState.SLEEPING)
         else:
             self.processor.reset_context()
@@ -253,7 +250,25 @@ class PhenixVoiceController:
             "• <b>« Mode épellation »</b> : épeler avec l’alphabet radio (Alpha, Bravo, Charlie…)<br>"
             "• <b>« Fin épellation »</b> / <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
         )
-        if self.is_muted:
+        if self._correction_open:
+            mic_info = ""
+            if self.is_muted:
+                mic_info = "<br><i>Micro coupé pendant la correction — utilisez les boutons/souris pour corriger, puis réactivez avec <b>F8</b>.</i>"
+            elif self.is_sleeping:
+                mic_info = "<br><i>Veille vocale pendant la correction — dites <b>« Phénix écoute »</b> pour reprendre la voix, ou utilisez les boutons/souris.</i>"
+            state = "<b>État : CORRECTION DU DERNIER SEGMENT</b>" + mic_info
+            cmds = (
+                "• <b>« Choisir un / deux / trois »</b> ou clic souris : remplacer par l'alternative proposée<br>"
+                "• <b>Re-dicter la phrase</b> : propose une nouvelle correction dans le champ (PAS appliquée automatiquement)<br>"
+                "• <b>« Valider la correction »</b> (ou bouton <b>[Appliquer la correction]</b>) : appliquer explicitement la correction<br>"
+                "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle précise<br>"
+                "• <b>« Mode épellation »</b> : épeler en alphabet radio (Alpha, Bravo…) pour corriger lettre par lettre<br>"
+                "• <b>« Annuler sans apprendre »</b> ou bascule du bouton : passer en mode <b>SANS apprendre</b> (ne pollue pas le profil)<br>"
+                "• <b>« Effacer ça »</b> : annuler le segment<br>"
+                "• <b>« Phénix repos »</b> / <b>F9</b> ou <b>« Couper Phénix »</b> / <b>F8</b> : mettre en pause le micro sans fermer la correction<br>"
+                + common
+            )
+        elif self.is_muted:
             state = "<b>État : MICRO COUPÉ (OFF)</b><br>Le micro n'écoute rien. Réactivez-le avec <b>F8</b> ou le bouton <b>[🔌 Micro ON/OFF (F8)]</b>."
             cmds = common
         elif self.is_sleeping:
@@ -273,19 +288,6 @@ class PhenixVoiceController:
                 "• <b>« Fin épellation »</b> ou <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
                 "• <b>« Valider la correction »</b> : appliquer la correction si le volet est ouvert<br>"
                 "• <b>« Corriger ça »</b>, <b>« Effacer ça »</b>, <b>« Annuler sans apprendre »</b> restent disponibles<br>"
-                + common
-            )
-        elif self._correction_open:
-            state = "<b>État : CORRECTION DU DERNIER SEGMENT</b>"
-            cmds = (
-                "• <b>« Choisir un / deux / trois »</b> ou clic souris : remplacer par l'alternative proposée<br>"
-                "• <b>Re-dicter la phrase</b> : propose une nouvelle correction dans le champ (PAS appliquée automatiquement)<br>"
-                "• <b>« Valider la correction »</b> (ou bouton <b>[Appliquer la correction]</b>) : appliquer explicitement la correction<br>"
-                "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle précise<br>"
-                "• <b>« Mode épellation »</b> : épeler en alphabet radio (Alpha, Bravo…) pour corriger lettre par lettre<br>"
-                "• <b>« Annuler sans apprendre »</b> ou bascule du bouton : passer en mode <b>SANS apprendre</b> (ne pollue pas le profil)<br>"
-                "• <b>« Effacer ça »</b> : annuler le segment<br>"
-                "• <b>« Phénix repos »</b> : mettre en veille, <b>« Couper Phénix »</b> : couper le micro<br>"
                 + common
             )
         else:
@@ -499,7 +501,6 @@ class PhenixVoiceController:
             if processed.intent == VoiceIntentType.SLEEP:
                 self.is_sleeping = True
                 self._spelling_mode = False
-                self._close_correction_bar()
                 self.hud.set_state(MicState.SLEEPING)
                 continue
 
