@@ -159,3 +159,23 @@ Répondre à trois besoins prioritaires identifiés en test direct : (1) savoir 
 1. Tester en direct l'aide « Que puis-je dire ? » et la correction manuelle dans le volet de correction.
 2. **Correction sur texte long (priorité fonctionnelle)** : étendre le *Shadow Buffer* à l'historique multi-segments et intégrer *UI Automation* pour sélectionner/corriger n'importe quel mot/expression dans un texte long (gestion des occurrences).
 3. **Phénix Studio & Apprentissage** : vocabulaire personnel, importateur documents/e-mails, snapshots de profil, et pipeline **Fine-Tuning LoRA local (DirectML)** sur échantillons validés.
+
+
+---
+
+## Session 5 — 10 Novembre 2026 : Correctif Critique Anti-Auto-Apprentissage du Volet de Correction
+
+### 1. Problème identifié
+Lorsqu'une correction était ouverte, toute nouvelle dictée était appliquée automatiquement comme remplacement du segment (et potentiellement enregistrée en « Corriger & Apprendre »), ce qui a provoqué l'enregistrement de 5 échantillons de correction erronés dans `user_data/corrections_learned/` (sessions courtes, aucun fine-tuning LoRA exécuté).
+
+### 2. Correctifs appliqués
+1. **Fin de l'application automatique** (`src/phenix_voice/main.py`, `src/phenix_voice/ui/hud.py`, `src/phenix_voice/postprocess/punctuation.py`) :
+   - Une dictée prononcée pendant que le volet de correction est ouvert est désormais proposée dans le champ de correction **sans être appliquée**.
+   - Ajout de la commande/intention **`APPLY_CORRECTION`** (« Valider la correction », « Appliquer la correction », « C'est corrigé », etc.) et validation explicite obligatoire (bouton **[Appliquer la correction]**, choix 1/2/3, ou commande vocale de validation).
+   - Aide contextuelle mise à jour pour refléter ce comportement sécurisé.
+2. **Retour arrière sur les mauvaises corrections apprises** :
+   - Les 5 couples WAV/log enregistrés à tort ont été mis en quarantaine dans `user_data/corrections_quarantine/<horodatage>/` et `user_data/corrections_learned/corrections_log.jsonl` a été réinitialisé (le modèle acoustique n'a pas été ré-entraîné ; seules les données de futur apprentissage ont été nettoyées).
+
+### 3. Prochaine étape prévue
+1. Re-tester le flux de correction sécurisé en direct.
+2. Poursuivre la correction sur texte long et Phénix Studio / pipeline LoRA (avec mécanismes de snapshots et réversibilité renforcés).
