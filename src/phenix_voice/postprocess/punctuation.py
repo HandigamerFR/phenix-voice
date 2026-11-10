@@ -286,6 +286,21 @@ NATO_ALPHABET: dict[str, str] = {
 NATO_SPACE_TOKENS: set[str] = {"espace", "space"}
 NATO_EMPTY_TOKENS: set[str] = {"trait d'union", "tiret", "moins"}  # symboles simples éventuels (optionnel)
 
+DIGIT_WORDS: dict[str, str] = {
+    "zéro": "0",
+    "zero": "0",
+    "un": "1",
+    "une": "1",
+    "deux": "2",
+    "trois": "3",
+    "quatre": "4",
+    "cinq": "5",
+    "six": "6",
+    "sept": "7",
+    "huit": "8",
+    "neuf": "9",
+}
+
 
 def _ends_with_explicit_spoken_punctuation(norm_text: str) -> bool:
     n = norm_text.strip()
@@ -311,31 +326,66 @@ def _strip_auto_terminal_punctuation(text: str) -> str:
     # Retirer uniquement le point ou la virgule terminaux auto-ajoutés (cas signalé : phrase/groupes de mots coupés)
     stripped = re.sub(r"[ \t]*[.,]+[ \t]*$", "", text)
     return stripped
+
+
 def text_to_nato_spelling(raw_text: str) -> str:
-    """Convertit une énonciation d'alphabet radio (Alpha Bravo Charlie) en lettres épelées."""
+    """Convertit une énonciation d'alphabet radio (Alpha Bravo Charlie) en texte épelé.
+    - Lettres NATO : Alpha/Bravo/... -> a/b/...
+    - « chiffre <x> » : insère le chiffre (ex. « chiffre un », « chiffre 5 » -> « 1 », « 5 »)
+    - « en lettres <mot> » / « mot <mot> » : insère le mot littéral (ex. « en lettres un » -> « un »)
+    - « espace » : insère un espace
+    """
     norm = normalize_key(raw_text)
     if not norm:
         return ""
-    # Gérer quelques tokens multi-mots avant découpage simple
-    norm = norm.replace("trait d union", "trait-d-union").replace("x ray", "x-ray").replace("fox trot", "fox-trot")
+    # Normalisations de tokens multi-mots
+    norm = (
+        norm.replace("trait d union", "trait-d-union")
+        .replace("x ray", "x-ray")
+        .replace("fox trot", "fox-trot")
+    )
     tokens = norm.split()
     out: list[str] = []
-    for tok in tokens:
-        t = tok.replace("’", "'").strip("-")
-        t_compact = t.replace("-", " ")
-        if t in NATO_ALPHABET:
-            out.append(NATO_ALPHABET[t])
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i].replace("’", "'").strip("-")
+        t_compact = tok.replace("-", " ")
+
+        # « chiffre un » / « chiffre 5 » -> caractère(s) numérique(s)
+        if tok == "chiffre" and i + 1 < len(tokens):
+            nxt = tokens[i + 1].replace("’", "'").strip("-")
+            if nxt in DIGIT_WORDS:
+                out.append(DIGIT_WORDS[nxt])
+                i += 2
+                continue
+            if nxt.isdigit():
+                out.append(nxt)
+                i += 2
+                continue
+
+        # « en lettres un » / « mot un » -> insérer le mot littéral (utile en correction)
+        if tok == "mot" and i + 1 < len(tokens):
+            out.append(tokens[i + 1])
+            i += 2
+            continue
+        if tok == "en" and i + 2 < len(tokens) and tokens[i + 1] == "lettres":
+            out.append(tokens[i + 2])
+            i += 3
+            continue
+
+        if tok in NATO_ALPHABET:
+            out.append(NATO_ALPHABET[tok])
         elif t_compact in NATO_ALPHABET:
             out.append(NATO_ALPHABET[t_compact])
-        elif t in NATO_SPACE_TOKENS:
+        elif tok in NATO_SPACE_TOKENS:
             out.append(" ")
-        elif t in NATO_EMPTY_TOKENS or t_compact in NATO_EMPTY_TOKENS:
-            # symboles simples : tiret/moins
-            if "tiret" in t or "moins" in t:
+        elif tok in NATO_EMPTY_TOKENS or t_compact in NATO_EMPTY_TOKENS:
+            if "tiret" in tok or "moins" in tok:
                 out.append("-")
-        elif len(t) == 1 and t.isalnum():
-            out.append(t)
+        elif len(tok) == 1 and tok.isalnum():
+            out.append(tok)
         # Les mots inconnus sont ignorés pour éviter d'injecter du texte dicté parasite en mode épellation
+        i += 1
     return "".join(out)
 
 

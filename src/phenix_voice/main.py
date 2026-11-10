@@ -255,7 +255,9 @@ class PhenixVoiceController:
             state = "<b>État : MODE ÉPELLATION (alphabet radio international)</b>"
             cmds = (
                 "• Dites <b>Alpha, Bravo, Charlie…</b> pour épeler des lettres (utile en correction, en double avec le clavier)<br>"
-                "• <b>« Espace »</b> : insérer un espace (si reconnu comme mot d’épellation)<br>"
+                "• <b>« Chiffre un / Chiffre 5 »</b> : insérer le caractère numérique (1, 5…)<br>"
+                "• <b>« En lettres un »</b> ou <b>« Mot un »</b> : insérer le mot littéral « un » (pas le chiffre)<br>"
+                "• <b>« Espace »</b> : insérer un espace<br>"
                 "• <b>« Fin épellation »</b> ou <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
                 "• <b>« Valider la correction »</b> : appliquer la correction si le volet est ouvert<br>"
                 "• <b>« Corriger ça »</b>, <b>« Effacer ça »</b>, <b>« Annuler sans apprendre »</b> restent disponibles<br>"
