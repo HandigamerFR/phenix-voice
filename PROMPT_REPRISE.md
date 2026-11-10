@@ -36,11 +36,13 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 ### 4. État d'Avancement Actuel & Prochaine Tâche Immédiate
 - **Phases terminées** :
   - [x] **Phase 0** : Cadrage, Cahier des charges, Architecture, Journal de bord, Prompt de reprise et création du dépôt GitHub privé `phenix-voice`.
-- **Phase en cours** : **Phase 1 — Socle Audio, Accélération GPU AMD & Dictée Universelle (POC)**
-- **Prochaine tâche immédiate à réaliser dans cette session** :
-  1. Initialiser la structure du projet Python (`pyproject.toml`, `src/phenix_voice/`, environnement virtuel).
-  2. Mettre en place et tester le moteur de transcription local accéléré sur le GPU **AMD Radeon RX 5700 XT** (Vulkan / DirectML) pour valider la latence (< 400 ms) et la qualité en français.
-  3. Créer le premier prototype fonctionnel de capture micro avec détection de souffle (*Silero VAD*) et injection directe du texte dans la fenêtre active (`SendInput`).
+  - [x] **Phase 1** : Socle Audio (`sounddevice` + *Silero VAD v5*), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* optimisé (`197 ms - 251 ms` via DirectML Zero-Copy IOBinding + graphe dynamique), Ponctuation hybride, Dictée directe `SendInput` et Barre flottante *No-Focus* (`WS_EX_NOACTIVATE`).
+- **Phase en cours** : **Phase 2 — Shadow Buffer, Sélection Vocale & Interface de Correction Anti-Dérive**
+- **Prochaine tâche immédiate à réaliser** :
+  1. Créer le *Shadow Buffer* complet conservant les derniers segments dictés `(Texte, Position, Alternatives, Audio WAV en RAM)`.
+  2. Implémenter les commandes *« Corriger ça »*, *« Corriger [mot] »* et *« Sélectionner [mot] »* directement dans la fenêtre cible sans boîte de dictée.
+  3. Ajouter à la barre flottante *No-Focus* l'affichage des alternatives numérotées (*« Choisir 1, 2... »* ou clic souris) avec la séparation stricte **« Corriger & Apprendre »** vs **« Corriger SANS apprendre (Oups / J'ai fourché) »**.
+  4. Implémenter la reconnaissance par **empreinte acoustique directe** (MFCC/DTW) pour protéger les commandes de correction.
 
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :

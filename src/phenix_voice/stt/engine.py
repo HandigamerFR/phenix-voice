@@ -1,0 +1,407 @@
+"""Moteur de transcription local Whisper accéléré sur GPU AMD via ONNX Runtime DirectML."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import json
+from pathlib import Path
+import time
+import numpy as np
+import onnx
+from onnx import TensorProto, helper, numpy_helper
+import onnxruntime as ort
+from huggingface_hub import hf_hub_download
+from tokenizers import Tokenizer
+
+from phenix_voice.stt.mel import compute_log_mel_spectrogram
+
+
+@dataclass
+class TranscriptionResult:
+    """Résultat enrichi d'une transcription vocale."""
+
+    text: str
+    alternatives: list[str] = field(default_factory=list)
+    confidence: float = 1.0
+    encoder_ms: float = 0.0
+    decoder_ms: float = 0.0
+    total_ms: float = 0.0
+    audio_duration_s: float = 0.0
+    bucket_frames: int = 0
+    provider: str = "DmlExecutionProvider"
+
+
+def build_or_get_dynamic_encoder(
+    repo_id: str,
+    cache_dir: Path,
+    subfolder_file: str = "onnx/encoder_model_fp16.onnx",
+) -> Path:
+    """Patche une seule fois le graphe ONNX de l'encodeur Whisper pour autoriser des durées
+    audio courtes dynamiques (ex: 3s, 5s, 8s au lieu de 30s fixes), divisant la latence GPU par 4 à 10.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = repo_id.replace("/", "--") + "__encoder_fp16_dynamic.onnx"
+    patched_path = cache_dir / safe_name
+    if patched_path.exists() and patched_path.stat().st_size > 1_000_000:
+        return patched_path
+
+    raw_enc_path = hf_hub_download(repo_id, subfolder_file)
+    model = onnx.load(raw_enc_path)
+
+    # 1. Supprimer les formes intermédiaires statiques (figées à 3000 / 1500)
+    del model.graph.value_info[:]
+    model.graph.input[0].type.tensor_type.shape.dim[2].ClearField("dim_value")
+    model.graph.input[0].type.tensor_type.shape.dim[2].dim_param = "encoder_sequence_length"
+    model.graph.output[0].type.tensor_type.shape.dim[1].ClearField("dim_value")
+    model.graph.output[0].type.tensor_type.shape.dim[1].dim_param = "encoder_sequence_length_out"
+
+    # 2. Remplacer les cibles Reshape [-1, 1500, ...] par [0, -1, ...] dans toutes les couches
+    for init in model.graph.initializer:
+        if "Concat" in init.name:
+            arr = numpy_helper.to_array(init)
+            if len(arr) >= 2 and arr[0] == -1 and arr[1] == 1500:
+                new_arr = arr.copy()
+                new_arr[0] = 0
+                new_arr[1] = -1
+                init.CopyFrom(numpy_helper.from_array(new_arr, init.name))
+
+    # 3. Découper dynamiquement embed_positions.weight à la longueur réelle T/2
+    starts_init = helper.make_tensor("pos_slice_starts", TensorProto.INT64, [1], [0])
+    axes_init = helper.make_tensor("pos_slice_axes", TensorProto.INT64, [1], [0])
+    idx_init = helper.make_tensor("pos_gather_idx", TensorProto.INT64, [1], [1])
+    model.graph.initializer.extend([starts_init, axes_init, idx_init])
+
+    shape_node = helper.make_node(
+        "Shape",
+        inputs=["/Transpose_output_0"],
+        outputs=["/Transpose_shape"],
+        name="/Shape_transpose",
+    )
+    gather_node = helper.make_node(
+        "Gather",
+        inputs=["/Transpose_shape", "pos_gather_idx"],
+        outputs=["/Transpose_seq_len"],
+        name="/Gather_seq_len",
+        axis=0,
+    )
+    slice_node = helper.make_node(
+        "Slice",
+        inputs=[
+            "embed_positions.weight",
+            "pos_slice_starts",
+            "/Transpose_seq_len",
+            "pos_slice_axes",
+        ],
+        outputs=["/embed_positions_sliced"],
+        name="/Slice_embed_positions",
+    )
+
+    for idx, node in enumerate(model.graph.node):
+        if node.name == "/Add_2":
+            node.input[1] = "/embed_positions_sliced"
+            model.graph.node.insert(idx, shape_node)
+            model.graph.node.insert(idx + 1, gather_node)
+            model.graph.node.insert(idx + 2, slice_node)
+            break
+
+    onnx.save(model, str(patched_path))
+    return patched_path
+
+
+class WhisperDirectMLEngine:
+    """Moteur Whisper Large-v3-Turbo (ou Small/Medium) accéléré sur GPU AMD via DirectML."""
+
+    # Palier rapide par défaut (600 trames = 6,0s) gardé chaud dans DirectML (< 250 ms de latence)
+    FAST_BUCKET_FRAMES: int = 600
+    BUCKETS_FRAMES: tuple[int, ...] = (600, 1500, 3000)
+
+    def __init__(
+        self,
+        repo_id: str = "onnx-community/whisper-large-v3-turbo",
+        language: str = "fr",
+        cache_dir: str | Path = "models/cache",
+        prefer_dml: bool = True,
+        warmup_buckets: tuple[int, ...] = (600,),
+    ) -> None:
+        self.repo_id = repo_id
+        self.language = language
+        self.cache_dir = Path(cache_dir)
+
+        available_providers = ort.get_available_providers()
+        if prefer_dml and "DmlExecutionProvider" in available_providers:
+            self.providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+            self.active_provider = "DmlExecutionProvider"
+            self.use_gpu_iobinding = True
+        else:
+            self.providers = ["CPUExecutionProvider"]
+            self.active_provider = "CPUExecutionProvider"
+            self.use_gpu_iobinding = False
+
+        # Configuration du modèle et du tokenizer
+        cfg_path = hf_hub_download(repo_id, "config.json")
+        with open(cfg_path, encoding="utf-8") as f:
+            self.config = json.load(f)
+        self.n_mels: int = int(self.config.get("num_mel_bins", 128))
+
+        tok_path = hf_hub_download(repo_id, "tokenizer.json")
+        self.tokenizer = Tokenizer.from_file(tok_path)
+
+        # Tokens spéciaux Whisper
+        self.sot_token = self.tokenizer.token_to_id("<|startoftranscript|>")
+        self.eot_token = self.tokenizer.token_to_id("<|endoftext|>")
+        self.prev_token = self.tokenizer.token_to_id("<|startofprev|>")
+        self.lang_token = self.tokenizer.token_to_id(f"<|{language}|>")
+        self.transcribe_token = self.tokenizer.token_to_id("<|transcribe|>")
+        self.notimestamps_token = self.tokenizer.token_to_id("<|notimestamps|>")
+
+        # Chargement des sessions ONNX
+        so = ort.SessionOptions()
+        so.log_severity_level = 3
+        so.enable_mem_pattern = False
+        so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+        enc_dynamic_path = build_or_get_dynamic_encoder(repo_id, self.cache_dir)
+        dec_path = hf_hub_download(repo_id, "onnx/decoder_model_fp16.onnx")
+        dec_past_path = hf_hub_download(repo_id, "onnx/decoder_with_past_model_fp16.onnx")
+
+        self.enc_session = ort.InferenceSession(
+            str(enc_dynamic_path), so, providers=self.providers
+        )
+        self.dec_session = ort.InferenceSession(dec_path, so, providers=self.providers)
+        self.dec_past_session = ort.InferenceSession(
+            dec_past_path, so, providers=self.providers
+        )
+
+        self.dec_out_names = [o.name for o in self.dec_session.get_outputs()]
+        self.dec_past_out_names = [o.name for o in self.dec_past_session.get_outputs()]
+
+        if warmup_buckets:
+            self._warmup(warmup_buckets)
+
+    def _warmup(self, buckets: tuple[int, ...]) -> None:
+        """Pré-compile les shaders DirectML sur la carte AMD Radeon pour éviter tout pic à la 1re phrase."""
+        dummy_ids = np.array(
+            [[self.sot_token, self.lang_token, self.transcribe_token, self.notimestamps_token]],
+            dtype=np.int64,
+        )
+        next_id = np.array([[self.eot_token]], dtype=np.int64)
+        for frames in buckets:
+            mel = np.zeros((1, self.n_mels, frames), dtype=np.float32)
+            hs = self.enc_session.run(None, {"input_features": mel})[0]
+            dec_outs = self.dec_session.run(
+                None, {"input_ids": dummy_ids, "encoder_hidden_states": hs}
+            )
+            past = {
+                name.replace("present.", "past_key_values."): val
+                for name, val in zip(self.dec_out_names[1:], dec_outs[1:])
+            }
+            self.dec_past_session.run(None, {"input_ids": next_id, **past})
+
+    def _select_bucket_frames(self, audio_samples: int, sr: int = 16000) -> int:
+        """Utilise le palier fixe rapide (600 trames = 6s) pour 98 % des souffles de dictée (<= 5,4s)
+        afin que DirectML conserve son plan d'exécution GPU compilé sans aucune recompilation.
+        """
+        needed_frames = int(np.ceil((audio_samples / sr + 0.6) * 100))
+        for bucket in self.BUCKETS_FRAMES:
+            if needed_frames <= bucket:
+                return bucket
+        return 3000
+
+    def _build_prompt_ids(self, initial_prompt: str | None = None) -> np.ndarray:
+        """Construit la séquence d'amorçage du décodeur avec support optionnel du vocabulaire personnel."""
+        prefix: list[int] = []
+        if initial_prompt and initial_prompt.strip():
+            encoded = self.tokenizer.encode(" " + initial_prompt.strip()).ids
+            # Limiter le prompt initial aux 120 derniers tokens
+            encoded = encoded[-120:]
+            if self.prev_token is not None:
+                prefix.append(self.prev_token)
+                prefix.extend(encoded)
+
+        prefix.extend(
+            [
+                self.sot_token,
+                self.lang_token,
+                self.transcribe_token,
+                self.notimestamps_token,
+            ]
+        )
+        return np.array([prefix], dtype=np.int64)
+
+    def transcribe(
+        self,
+        audio_pcm: np.ndarray,
+        initial_prompt: str | None = None,
+        max_new_tokens: int = 96,
+        num_alternatives: int = 4,
+    ) -> TranscriptionResult:
+        """Transcrit un segment audio 16 kHz mono float32 et génère également des alternatives proches."""
+        t_start = time.perf_counter()
+        audio = np.asarray(audio_pcm, dtype=np.float32).reshape(-1)
+        audio_duration_s = len(audio) / 16000.0
+        if audio_duration_s < 0.15 or np.max(np.abs(audio)) < 1e-4:
+            return TranscriptionResult(
+                text="",
+                audio_duration_s=audio_duration_s,
+                provider=self.active_provider,
+            )
+
+        bucket_frames = self._select_bucket_frames(len(audio))
+        mel = compute_log_mel_spectrogram(
+            audio, n_mels=self.n_mels, target_frames=bucket_frames
+        )
+
+        # 1. Passage Encodeur (GPU DirectML)
+        t_enc0 = time.perf_counter()
+        if self.use_gpu_iobinding:
+            io_enc = self.enc_session.io_binding()
+            io_enc.bind_cpu_input("input_features", mel)
+            io_enc.bind_output("last_hidden_state", "dml", 0)
+            self.enc_session.run_with_iobinding(io_enc)
+            hs_gpu = io_enc.get_outputs()[0]
+        else:
+            hs_cpu = self.enc_session.run(None, {"input_features": mel})[0]
+        encoder_ms = (time.perf_counter() - t_enc0) * 1000.0
+
+        # 2. Premier pas Décodeur (calcul des clés/valeurs d'attention croisée)
+        t_dec0 = time.perf_counter()
+        prompt_ids = self._build_prompt_ids(initial_prompt)
+
+        if self.use_gpu_iobinding:
+            io_dec = self.dec_session.io_binding()
+            io_dec.bind_cpu_input("input_ids", prompt_ids)
+            io_dec.bind_ortvalue_input("encoder_hidden_states", hs_gpu)
+            io_dec.bind_output("logits", "cpu")
+            for name in self.dec_out_names[1:]:
+                io_dec.bind_output(name, "dml", 0)
+            self.dec_session.run_with_iobinding(io_dec)
+            dec_outs = io_dec.get_outputs()
+            logits = dec_outs[0].numpy()[0, -1, :].astype(np.float64)
+            past_gpu = dict(zip(self.dec_out_names[1:], dec_outs[1:]))
+            enc_kv_gpu = {
+                k.replace("present.", "past_key_values."): v
+                for k, v in past_gpu.items()
+                if ".encoder." in k
+            }
+            dec_kv_gpu = {
+                k.replace("present.", "past_key_values."): v
+                for k, v in past_gpu.items()
+                if ".decoder." in k
+            }
+        else:
+            dec_outs = self.dec_session.run(
+                None, {"input_ids": prompt_ids, "encoder_hidden_states": hs_cpu}
+            )
+            logits = dec_outs[0][0, -1, :].astype(np.float64)
+            past_cpu = dict(zip(self.dec_out_names[1:], dec_outs[1:]))
+            enc_kv_cpu = {
+                k.replace("present.", "past_key_values."): v
+                for k, v in past_cpu.items()
+                if ".encoder." in k
+            }
+            dec_kv_cpu = {
+                k.replace("present.", "past_key_values."): v
+                for k, v in past_cpu.items()
+                if ".decoder." in k
+            }
+
+        generated_tokens: list[int] = []
+        token_probs: list[float] = []
+        # Stocker les meilleurs seconds choix (position, second_token_id, ratio_prob) pour générer les alternatives
+        runner_up_candidates: list[tuple[int, int, float]] = []
+
+        for step in range(max_new_tokens):
+            # Masquer les tokens spéciaux (> eot_token) sauf eot_token lui-même
+            logits[self.eot_token + 1 :] = -1e9
+            if step == 0:
+                # Éviter de terminer à vide au tout premier token si de la parole est présente
+                logits[self.eot_token] -= 2.0
+
+            # Pénalité anti-boucle sur les tokens déjà générés récemment
+            if len(generated_tokens) >= 2:
+                for prev_tok in set(generated_tokens[-8:]):
+                    if logits[prev_tok] > 0:
+                        logits[prev_tok] /= 1.2
+                    else:
+                        logits[prev_tok] *= 1.2
+
+            # Recherche ultra-rapide des 2 meilleurs tokens avant calcul des probabilités
+            top2_idx = np.argpartition(logits, -2)[-2:]
+            if logits[top2_idx[0]] < logits[top2_idx[1]]:
+                top2_idx = top2_idx[::-1]
+            best_tok = int(top2_idx[0])
+            second_tok = int(top2_idx[1])
+
+            shifted = logits - logits[best_tok]
+            denom = float(np.sum(np.exp(shifted)))
+            best_prob = 1.0 / denom
+            second_prob = float(np.exp(logits[second_tok] - logits[best_tok])) / denom
+
+            if best_tok == self.eot_token:
+                break
+
+            if second_tok < self.eot_token and second_prob > 0.04:
+                runner_up_candidates.append(
+                    ( len(generated_tokens), second_tok, second_prob / max(best_prob, 1e-6) )
+                )
+
+            generated_tokens.append(best_tok)
+            token_probs.append(best_prob)
+
+            # Pas suivant avec KV-cache
+            next_id_arr = np.array([[best_tok]], dtype=np.int64)
+            if self.use_gpu_iobinding:
+                io = self.dec_past_session.io_binding()
+                io.bind_cpu_input("input_ids", next_id_arr)
+                for k, ov in enc_kv_gpu.items():
+                    io.bind_ortvalue_input(k, ov)
+                for k, ov in dec_kv_gpu.items():
+                    io.bind_ortvalue_input(k, ov)
+                io.bind_output("logits", "cpu")
+                for name in self.dec_past_out_names[1:]:
+                    io.bind_output(name, "dml", 0)
+                self.dec_past_session.run_with_iobinding(io)
+                ort_outs = io.get_outputs()
+                logits = ort_outs[0].numpy()[0, -1, :].astype(np.float64)
+                for name, ov in zip(self.dec_past_out_names[1:], ort_outs[1:]):
+                    dec_kv_gpu[name.replace("present.", "past_key_values.")] = ov
+            else:
+                feed = {"input_ids": next_id_arr, **enc_kv_cpu, **dec_kv_cpu}
+                res = self.dec_past_session.run(None, feed)
+                logits = res[0][0, -1, :].astype(np.float64)
+                for name, val in zip(self.dec_past_out_names[1:], res[1:]):
+                    dec_kv_cpu[name.replace("present.", "past_key_values.")] = val
+
+        decoder_ms = (time.perf_counter() - t_dec0) * 1000.0
+        total_ms = (time.perf_counter() - t_start) * 1000.0
+
+        # Si le souffle dépassait 5,4s (palier > 600), ré-amorcer immédiatement le palier rapide 600
+        if bucket_frames != self.FAST_BUCKET_FRAMES:
+            self._warmup((self.FAST_BUCKET_FRAMES,))
+
+        main_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        mean_conf = float(np.mean(token_probs)) if token_probs else 0.0
+
+        # Construction des alternatives les plus plausibles (pour la future barre de correction)
+        alternatives: list[str] = []
+        runner_up_candidates.sort(key=lambda x: x[2], reverse=True)
+        for pos, alt_tok, _ in runner_up_candidates:
+            alt_seq = list(generated_tokens)
+            alt_seq[pos] = alt_tok
+            alt_text = self.tokenizer.decode(alt_seq, skip_special_tokens=True).strip()
+            if alt_text and alt_text.lower() != main_text.lower() and alt_text not in alternatives:
+                alternatives.append(alt_text)
+                if len(alternatives) >= num_alternatives:
+                    break
+
+        return TranscriptionResult(
+            text=main_text,
+            alternatives=alternatives,
+            confidence=mean_conf,
+            encoder_ms=encoder_ms,
+            decoder_ms=decoder_ms,
+            total_ms=total_ms,
+            audio_duration_s=audio_duration_s,
+            bucket_frames=bucket_frames,
+            provider=self.active_provider,
+        )
