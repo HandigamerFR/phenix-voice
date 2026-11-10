@@ -1,4 +1,4 @@
-"""Post-processeur de ponctuation hybride, règles déterministes A->B et routeur d'intentions (Phase 2)."""
+"""Post-processeur de ponctuation hybride, règles déterministes A->B et routeur d'intentions (Phase 2+)."""
 
 from __future__ import annotations
 
@@ -17,13 +17,15 @@ class VoiceIntentType(str, Enum):
     SLEEP = "sleep"                  # « Phénix repos »
     MUTE_MIC = "mute_mic"            # « Couper Phénix », « Éteindre Phénix »
     SCRATCH_LAST = "scratch"         # « Effacer ça », « Rayez ça »
-    OUPS_NO_LEARN = "oups"           # « Oups », « J'ai fourché » (jette l'audio)
+    OUPS_NO_LEARN = "oups"           # « Annuler sans apprendre » (jette l'audio, ne pollue pas le profil)
     OPEN_CORRECTION = "correct"      # « Corriger ça », « Corriger [mot] »
     CHOOSE_ALT = "choose_alt"        # « Choisir un / deux / trois »
     SELECT_TARGET = "select_target"  # « Sélectionner [mot] »
     PRESS_ENTER = "press_enter"      # « Presser Entrée »
     SHOW_HELP = "show_help"          # « Que puis-je dire ? » (liste des commandes disponibles)
     APPLY_CORRECTION = "apply_corr"  # « Valider la correction » (applique le texte du champ de correction)
+    ENTER_SPELLING = "enter_spell"   # « Mode épellation » (alphabet radio international)
+    EXIT_SPELLING = "exit_spell"     # « Fin épellation » / « Mode dictée »
 
 
 @dataclass
@@ -107,10 +109,39 @@ SCRATCH_COMMANDS: set[str] = {
 }
 
 OUPS_COMMANDS: set[str] = {
-    "oups",
+    "annuler sans apprendre",
+    "ne pas apprendre",
+    "ne retiens pas",
+    "ne rien apprendre",
+    "sans apprendre",
+    "corriger sans apprendre",
     "j'ai fourché",
     "j'ai bafouillé",
-    "corriger sans apprendre",
+}
+
+SPELLING_ENTER_COMMANDS: set[str] = {
+    "mode épellation",
+    "mode epellation",
+    "mode épeler",
+    "mode epeler",
+    "épellation",
+    "epellation",
+    "alphabet radio",
+}
+
+SPELLING_EXIT_COMMANDS: set[str] = {
+    "fin épellation",
+    "fin epellation",
+    "fin d'épellation",
+    "fin d'epellation",
+    "arrêter épellation",
+    "arreter epellation",
+    "stop épellation",
+    "stop epellation",
+    "mode dictée",
+    "mode dictee",
+    "fin de l'épellation",
+    "fin de l epellation",
 }
 
 OPEN_CORRECTION_COMMANDS: set[str] = {
@@ -180,6 +211,133 @@ SPOKEN_PUNCTUATION_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r",?\s*\bvirgule\b[,.]*", re.IGNORECASE), ","),
 ]
 
+# Indicateurs de ponctuation/mise en forme explicitement dictée (en fin d'énoncé) : on ne retire
+# pas la ponctuation finale dans ces cas, contrairement à la ponctuation auto-ajoutée par Whisper.
+EXPLICIT_SPOKEN_PUNCT_ENDINGS: tuple[str, ...] = (
+    "point à la ligne",
+    "pour la ligne",
+    "pour un aligné",
+    "pour en aligné",
+    "où est la ligne",
+    "ou est la ligne",
+    "à la ligne",
+    "nouveau paragraphe",
+    "nouveaux paragraphes",
+    "nouveaux paragraphe",
+    "point d'interrogation",
+    "point d interrogation",
+    "point interrogation",
+    "pour l'interrogation",
+    "pas d'interrogation",
+    "point d'exclamation",
+    "point exclamation",
+    "points de suspension",
+    "point de suspension",
+    "point virgule",
+    "point-virgule",
+    "deux points",
+    "deux-points",
+    "virgule",
+    "point",
+)
+
+NATO_ALPHABET: dict[str, str] = {
+    "alpha": "a",
+    "alfa": "a",
+    "bravo": "b",
+    "charlie": "c",
+    "delta": "d",
+    "echo": "e",
+    "écho": "e",
+    "foxtrot": "f",
+    "fox trot": "f",
+    "golf": "g",
+    "hotel": "h",
+    "hôtel": "h",
+    "india": "i",
+    "juliett": "j",
+    "juliet": "j",
+    "juliette": "j",
+    "kilo": "k",
+    "lima": "l",
+    "mike": "m",
+    "november": "n",
+    "novembre": "n",
+    "oscar": "o",
+    "papa": "p",
+    "quebec": "q",
+    "québec": "q",
+    "romeo": "r",
+    "roméo": "r",
+    "sierra": "s",
+    "tango": "t",
+    "uniform": "u",
+    "uniforme": "u",
+    "victor": "v",
+    "whiskey": "w",
+    "whisky": "w",
+    "xray": "x",
+    "x-ray": "x",
+    "x ray": "x",
+    "yankee": "y",
+    "zulu": "z",
+    "zoulou": "z",
+}
+NATO_SPACE_TOKENS: set[str] = {"espace", "space"}
+NATO_EMPTY_TOKENS: set[str] = {"trait d'union", "tiret", "moins"}  # symboles simples éventuels (optionnel)
+
+
+def _ends_with_explicit_spoken_punctuation(norm_text: str) -> bool:
+    n = norm_text.strip()
+    if not n:
+        return False
+    for ending in EXPLICIT_SPOKEN_PUNCT_ENDINGS:
+        if n == ending or n.endswith(" " + ending) or n.endswith(ending):
+            return True
+    return False
+
+
+def _strip_auto_terminal_punctuation(text: str) -> str:
+    """Retire la ponctuation finale ajoutée automatiquement par le modèle (point/virgule)
+    pour ne pas casser les phrases inachevées. Préserve les fins explicites comme « .\n », « \n\n » ou « ... »."""
+    if not text:
+        return text
+    # Ne pas toucher aux fins de ligne/paragraphes gérées par les commandes de ponctuation dictée
+    if text.endswith("\n"):
+        return text
+    # Préserver les points de suspension explicites
+    if text.rstrip().endswith("..."):
+        return text
+    # Retirer uniquement le point ou la virgule terminaux auto-ajoutés (cas signalé : phrase/groupes de mots coupés)
+    stripped = re.sub(r"[ \t]*[.,]+[ \t]*$", "", text)
+    return stripped
+def text_to_nato_spelling(raw_text: str) -> str:
+    """Convertit une énonciation d'alphabet radio (Alpha Bravo Charlie) en lettres épelées."""
+    norm = normalize_key(raw_text)
+    if not norm:
+        return ""
+    # Gérer quelques tokens multi-mots avant découpage simple
+    norm = norm.replace("trait d union", "trait-d-union").replace("x ray", "x-ray").replace("fox trot", "fox-trot")
+    tokens = norm.split()
+    out: list[str] = []
+    for tok in tokens:
+        t = tok.replace("’", "'").strip("-")
+        t_compact = t.replace("-", " ")
+        if t in NATO_ALPHABET:
+            out.append(NATO_ALPHABET[t])
+        elif t_compact in NATO_ALPHABET:
+            out.append(NATO_ALPHABET[t_compact])
+        elif t in NATO_SPACE_TOKENS:
+            out.append(" ")
+        elif t in NATO_EMPTY_TOKENS or t_compact in NATO_EMPTY_TOKENS:
+            # symboles simples : tiret/moins
+            if "tiret" in t or "moins" in t:
+                out.append("-")
+        elif len(t) == 1 and t.isalnum():
+            out.append(t)
+        # Les mots inconnus sont ignorés pour éviter d'injecter du texte dicté parasite en mode épellation
+    return "".join(out)
+
 
 class HybridPunctuationProcessor:
     """Applique les règles déterministes A->B, route les commandes Phase 2 et met en forme la ponctuation."""
@@ -231,6 +389,12 @@ class HybridPunctuationProcessor:
                     raw_text=raw_text,
                     mapped_text=mapped,
                 )
+            if norm in SPELLING_EXIT_COMMANDS:
+                return ProcessedUtterance(
+                    intent=VoiceIntentType.EXIT_SPELLING,
+                    raw_text=raw_text,
+                    mapped_text=mapped,
+                )
             return ProcessedUtterance(
                 intent=VoiceIntentType.DICTATION,
                 text_to_inject="",
@@ -238,7 +402,7 @@ class HybridPunctuationProcessor:
                 mapped_text=mapped,
             )
 
-        # 3. Commandes de contrôle du micro et aide
+        # 3. Commandes de contrôle du micro, aide et modes
         if norm in MUTE_COMMANDS:
             return ProcessedUtterance(
                 intent=VoiceIntentType.MUTE_MIC, raw_text=raw_text, mapped_text=mapped
@@ -254,6 +418,14 @@ class HybridPunctuationProcessor:
         if norm in SHOW_HELP_COMMANDS:
             return ProcessedUtterance(
                 intent=VoiceIntentType.SHOW_HELP, raw_text=raw_text, mapped_text=mapped
+            )
+        if norm in SPELLING_EXIT_COMMANDS:
+            return ProcessedUtterance(
+                intent=VoiceIntentType.EXIT_SPELLING, raw_text=raw_text, mapped_text=mapped
+            )
+        if norm in SPELLING_ENTER_COMMANDS:
+            return ProcessedUtterance(
+                intent=VoiceIntentType.ENTER_SPELLING, raw_text=raw_text, mapped_text=mapped
             )
 
         # 4. Commandes de correction, d'édition et de touche Entrée
@@ -318,13 +490,16 @@ class HybridPunctuationProcessor:
             )
 
         # 5. Mise en forme du texte dicté et ponctuation hybride
+        explicit_spoken_punct = _ends_with_explicit_spoken_punctuation(norm)
         text = mapped.strip()
         for pattern, replacement in SPOKEN_PUNCTUATION_RULES:
             text = pattern.sub(replacement, text)
 
-        text = re.sub(r"\s+\bpoint\b[.!?]*$", ".", text, flags=re.IGNORECASE)
-        if normalize_key(text) == "point":
-            text = "."
+        # « point » isolé ou final explicite
+        if re.search(r"\bpoint\b", norm, re.IGNORECASE) and explicit_spoken_punct:
+            text = re.sub(r"\s+\bpoint\b[.!?]*$", ".", text, flags=re.IGNORECASE)
+            if normalize_key(text) == "point":
+                text = "."
 
         text = re.sub(r"\s+,", ",", text)
         text = re.sub(r"\s+\.", ".", text)
@@ -332,15 +507,21 @@ class HybridPunctuationProcessor:
         text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
 
-        if not self._after_sentence_end and text and not text.startswith(("\n", ".", ",", ")")):
+        # Ponctuation automatique du modèle (Whisper) : ne pas forcer un point/virgule final
+        # sur un groupe de mots inachevé. On conserve la ponctuation uniquement si elle a été dictée explicitement.
+        if not explicit_spoken_punct:
+            text = _strip_auto_terminal_punctuation(text)
+
+        if not self._after_sentence_end and text and not text.startswith(("\n", ".", ",", ")", "!", "?", ";", ":")):
             text = " " + text
         elif self._after_sentence_end and text and text[0].isalpha():
             text = text[0].upper() + text[1:]
 
         stripped_end = text.rstrip(" ")
-        if stripped_end.endswith("\n"):
+        if stripped_end.endswith(("\n", ".", "!", "?", "...")):
             self._after_sentence_end = True
         else:
+            # Laisser la suite dans la même phrase si l'utilisateur n'a pas terminé explicitement
             self._after_sentence_end = False
 
         return ProcessedUtterance(

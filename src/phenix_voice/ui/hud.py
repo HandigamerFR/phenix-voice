@@ -303,7 +303,7 @@ class PhenixHUD(QWidget):
         self.corr_btn.clicked.connect(self.on_open_correction)
         top_row.addWidget(self.corr_btn)
 
-        self.scratch_btn = QPushButton("🛡️ Oups / Effacer")
+        self.scratch_btn = QPushButton("🛡️ Sans apprendre / Effacer")
         self.scratch_btn.setObjectName("scratchBtn")
         self.scratch_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.scratch_btn.clicked.connect(self.on_oups_scratch)
@@ -488,7 +488,7 @@ class PhenixHUD(QWidget):
                 "background-color: #14532d; border-color: #22c55e; color: #dcfce7;"
             )
         else:
-            self.learn_mode_btn.setText("🛡️ Mode : SANS Apprendre (J'ai fourché)")
+            self.learn_mode_btn.setText("🛡️ Mode : SANS Apprendre (Annuler sans apprendre)")
             self.learn_mode_btn.setStyleSheet(
                 "background-color: #7c2d12; border-color: #f97316; color: #ffedd5;"
             )

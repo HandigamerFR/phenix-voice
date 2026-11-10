@@ -62,7 +62,7 @@ def test_phase2_commands_and_punctuation() -> None:
     assert proc.process("Couper Phénix").intent == VoiceIntentType.MUTE_MIC
     assert proc.process("Presser Entrée").intent == VoiceIntentType.PRESS_ENTER
     assert proc.process("Corriger ça").intent == VoiceIntentType.OPEN_CORRECTION
-    assert proc.process("Oups").intent == VoiceIntentType.OUPS_NO_LEARN
+    assert proc.process("Annuler sans apprendre").intent == VoiceIntentType.OUPS_NO_LEARN
 
     c1 = proc.process("Choisir un")
     assert c1.intent == VoiceIntentType.CHOOSE_ALT

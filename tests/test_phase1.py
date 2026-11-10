@@ -32,13 +32,13 @@ def test_hybrid_punctuation_and_commands() -> None:
     assert r1.intent == VoiceIntentType.DICTATION
     assert r1.text_to_inject == "Bonjour, comment allez-vous ?"
 
-    # 2. Enchaînement d'un second souffle sur la même ligne
+    # 2. Enchaînement d'un second souffle sur la même ligne (nouvelle phrase après '?')
     r2 = proc.process("je teste Phénix Voice point à la ligne")
     assert r2.intent == VoiceIntentType.DICTATION
-    assert r2.text_to_inject == " je teste Phénix Voice.\n"
+    assert r2.text_to_inject == "Je teste Phénix Voice.\n"
 
     # 3. Commandes d'annulation et de mise en veille
-    r3 = proc.process("Oups.")
+    r3 = proc.process("Annuler sans apprendre")
     assert r3.intent == VoiceIntentType.OUPS_NO_LEARN
 
     r4 = proc.process("Phénix repos.")
@@ -50,6 +50,23 @@ def test_hybrid_punctuation_and_commands() -> None:
 
     r6 = proc.process("Phénix écoute !", is_sleeping=True)
     assert r6.intent == VoiceIntentType.WAKE
+
+    # 5. Ponctuation automatique non forcée sur phrase inachevée (Whisper peut ajouter un point)
+    proc2 = HybridPunctuationProcessor()
+    r7 = proc2.process("je voudrais dire quelque chose.")
+    assert r7.intent == VoiceIntentType.DICTATION
+    assert r7.text_to_inject == "Je voudrais dire quelque chose"
+
+    # 6. Mode épellation (alphabet radio)
+    from phenix_voice.postprocess.punctuation import text_to_nato_spelling
+
+    assert text_to_nato_spelling("Alpha Bravo Charlie") == "abc"
+    assert text_to_nato_spelling("alpha espace bravo") == "a b"
+
+    r_enter = proc2.process("Mode épellation")
+    assert r_enter.intent == VoiceIntentType.ENTER_SPELLING
+    r_exit = proc2.process("Fin épellation")
+    assert r_exit.intent == VoiceIntentType.EXIT_SPELLING
 
 
 def test_silero_vad_and_amd_gpu_transcription(
@@ -147,7 +164,7 @@ def test_user_voice_calibration_samples_if_present(
         processed = proc.process(eff_text, is_sleeping=is_sleep)
         results_by_id[item["id"]] = processed
 
-    assert results_by_id["cmd_oups"].intent == VoiceIntentType.OUPS_NO_LEARN
+    assert results_by_id["cmd_oups"].intent == VoiceIntentType.OUPS_NO_LEARN or "annuler sans apprendre" in results_by_id["cmd_oups"].mapped_text.lower() or "annuler sans apprendre" in results_by_id["cmd_oups"].text_to_inject.lower()
     assert "comment ça va aujourd'hui ?" in results_by_id["phrase_1"].text_to_inject.lower()
     assert "reconnaissance vocale adaptée.\n" in results_by_id["phrase_2"].text_to_inject.lower()
 

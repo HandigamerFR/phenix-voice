@@ -126,8 +126,8 @@ class WhisperDirectMLEngine:
     FAST_BUCKET_FRAMES: int = 1200
     BUCKETS_FRAMES: tuple[int, ...] = (1200, 3000)
     DEFAULT_CALIBRATED_PROMPT: str = (
-        "Écoute, Au repos, Corriger ça, Oups, point à la ligne, "
-        "point d'interrogation, point d'exclamation, virgule, reconnaissance vocale adaptée."
+        "Écoute, Au repos, Corriger ça, Annuler sans apprendre, Mode épellation, Fin épellation, "
+        "point à la ligne, point d'interrogation, point d'exclamation, virgule, reconnaissance vocale adaptée."
     )
 
     def __init__(

@@ -24,6 +24,7 @@ from phenix_voice.postprocess.plausibility import PlausibilityArbitrator
 from phenix_voice.postprocess.punctuation import (
     HybridPunctuationProcessor,
     VoiceIntentType,
+    text_to_nato_spelling,
 )
 from phenix_voice.stt.engine import WhisperDirectMLEngine
 from phenix_voice.ui.hud import MicState, PhenixHUD
@@ -50,9 +51,10 @@ class PhenixVoiceController:
 
         # État du volet de correction Phase 2
         self._correction_open = False
-        self._learn_on_correction = True  # True = Corriger & Apprendre (LoRA), False = Oups (Sans apprendre)
+        self._learn_on_correction = True  # True = Corriger & Apprendre (LoRA), False = Annuler sans apprendre
         self._help_visible = False
         self._pending_correction_text = ""
+        self._spelling_mode = False  # Mode épellation (alphabet radio international)
 
         self.shadow_buffer = ShadowBuffer()
         self.arbitrator = PlausibilityArbitrator(
@@ -235,6 +237,10 @@ class PhenixVoiceController:
             "• <b>F9</b> : basculer Écoute active / Veille vocale<br>"
             "• <b>« Que puis-je dire ? »</b> : afficher/masquer cette aide"
         )
+        spelling_note = (
+            "• <b>« Mode épellation »</b> : épeler avec l’alphabet radio (Alpha, Bravo, Charlie…)<br>"
+            "• <b>« Fin épellation »</b> / <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
+        )
         if self.is_muted:
             state = "<b>État : MICRO COUPÉ (OFF)</b><br>Le micro n'écoute rien. Réactivez-le avec <b>F8</b> ou le bouton <b>[🔌 Micro ON/OFF (F8)]</b>."
             cmds = common
@@ -245,6 +251,16 @@ class PhenixVoiceController:
                 "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
                 + common
             )
+        elif self._spelling_mode:
+            state = "<b>État : MODE ÉPELLATION (alphabet radio international)</b>"
+            cmds = (
+                "• Dites <b>Alpha, Bravo, Charlie…</b> pour épeler des lettres (utile en correction, en double avec le clavier)<br>"
+                "• <b>« Espace »</b> : insérer un espace (si reconnu comme mot d’épellation)<br>"
+                "• <b>« Fin épellation »</b> ou <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
+                "• <b>« Valider la correction »</b> : appliquer la correction si le volet est ouvert<br>"
+                "• <b>« Corriger ça »</b>, <b>« Effacer ça »</b>, <b>« Annuler sans apprendre »</b> restent disponibles<br>"
+                + common
+            )
         elif self._correction_open:
             state = "<b>État : CORRECTION DU DERNIER SEGMENT</b>"
             cmds = (
@@ -252,7 +268,8 @@ class PhenixVoiceController:
                 "• <b>Re-dicter la phrase</b> : propose une nouvelle correction dans le champ (PAS appliquée automatiquement)<br>"
                 "• <b>« Valider la correction »</b> (ou bouton <b>[Appliquer la correction]</b>) : appliquer explicitement la correction<br>"
                 "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle précise<br>"
-                "• <b>« Oups »</b> ou bascule du bouton : passer en mode <b>SANS apprendre</b> (ne pollue pas le profil)<br>"
+                "• <b>« Mode épellation »</b> : épeler en alphabet radio (Alpha, Bravo…) pour corriger lettre par lettre<br>"
+                "• <b>« Annuler sans apprendre »</b> ou bascule du bouton : passer en mode <b>SANS apprendre</b> (ne pollue pas le profil)<br>"
                 "• <b>« Effacer ça »</b> : annuler le segment<br>"
                 "• <b>« Phénix repos »</b> : mettre en veille, <b>« Couper Phénix »</b> : couper le micro<br>"
                 + common
@@ -261,11 +278,13 @@ class PhenixVoiceController:
             state = "<b>État : ÉCOUTE ACTIVE (dictée libre)</b>"
             cmds = (
                 "• <b>Dictée libre</b> : parlez normalement, le texte s'écrit dans la fenêtre active<br>"
-                "• <b>« Phénix repos »</b> : mettre en veille vocale (sans conflit avec Dragon)<br>"
+                "• La ponctuation finale n'est plus forcée automatiquement ; dictez <b>« point »</b>, <b>« virgule »</b>, <b>« point d'interrogation »</b> etc. quand vous le souhaitez<br>"
+                + spelling_note
+                + "• <b>« Phénix repos »</b> : mettre en veille vocale (sans conflit avec Dragon)<br>"
                 "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
                 "• <b>« Corriger ça »</b> : ouvrir les alternatives (1/2/3) et la correction manuelle du dernier souffle<br>"
                 "• <b>« Effacer ça »</b> : supprimer le dernier souffle<br>"
-                "• <b>« Oups »</b> : effacer le dernier souffle SANS apprendre (« j'ai fourché »)<br>"
+                "• <b>« Annuler sans apprendre »</b> : effacer le dernier souffle SANS apprendre (bafouillage / fausse manip)<br>"
                 "• <b>« Presser Entrée »</b> : appuyer sur Entrée<br>"
                 "• <b>« Point à la ligne »</b>, <b>« Nouveau paragraphe »</b>, <b>« Virgule »</b>, <b>« Point d'interrogation »</b> etc.<br>"
                 + common
@@ -293,7 +312,7 @@ class PhenixVoiceController:
         erased = self.shadow_buffer.scratch_last(discard_audio=True)
         if erased is not None:
             self.hud.set_transcript(
-                "[Souffle effacé — Audio détruit (« Oups, j'ai fourché »)]", 0.0
+                "[Souffle effacé — Audio détruit (« Annuler sans apprendre »)]", 0.0
             )
 
     def _close_correction_bar(self) -> None:
@@ -351,7 +370,7 @@ class PhenixVoiceController:
         else:
             self.hud.set_state(MicState.LISTENING)
             self.hud.set_transcript(
-                "Prêt — Dites « Que puis-je dire ? » pour l'aide, ou « Couper Phénix » pour couper le micro",
+                "Prêt — Dites « Que puis-je dire ? » pour l'aide, « Mode épellation » pour épeler, ou « Couper Phénix »",
                 0.0,
             )
 
@@ -434,8 +453,27 @@ class PhenixVoiceController:
                     self.hud.set_state(MicState.LISTENING)
                 continue
 
+            if processed.intent == VoiceIntentType.ENTER_SPELLING:
+                self._spelling_mode = True
+                self.hud.set_transcript(
+                    "Mode épellation activé — dites Alpha, Bravo, Charlie… (« Fin épellation » pour quitter)",
+                    result.total_ms,
+                )
+                self.hud.set_state(MicState.LISTENING)
+                continue
+
+            if processed.intent == VoiceIntentType.EXIT_SPELLING:
+                self._spelling_mode = False
+                self.hud.set_transcript(
+                    "Mode épellation désactivé — retour à la dictée normale",
+                    result.total_ms,
+                )
+                self.hud.set_state(MicState.LISTENING)
+                continue
+
             if processed.intent == VoiceIntentType.SLEEP:
                 self.is_sleeping = True
+                self._spelling_mode = False
                 self._close_correction_bar()
                 self.hud.set_state(MicState.SLEEPING)
                 continue
@@ -458,7 +496,7 @@ class PhenixVoiceController:
 
             if processed.intent == VoiceIntentType.OUPS_NO_LEARN:
                 if self._correction_open:
-                    # Si le volet de correction est ouvert, « Oups » le passe en mode SANS apprendre
+                    # Si le volet de correction est ouvert, « Annuler sans apprendre » le passe en mode SANS apprendre
                     self._learn_on_correction = False
                     last = self.shadow_buffer.last_segment
                     if last:
@@ -520,34 +558,41 @@ class PhenixVoiceController:
             # Dictée de texte : si le volet « Corriger ça » est ouvert, la nouvelle dictée est
             # proposée dans le champ de correction SANS application automatique (anti-bafouillage / anti-coupure).
             # L'utilisateur doit valider explicitement (bouton, « Valider la correction », ou choix 1/2/3).
-            if (
-                processed.intent == VoiceIntentType.DICTATION
-                and processed.text_to_inject
-            ):
-                if self._correction_open:
-                    proposed = processed.text_to_inject.lstrip(" ").strip()
-                    self._pending_correction_text = proposed
-                    self.hud.set_correction_edit_text(proposed)
-                    self.hud.set_transcript(
-                        proposed,
-                        result.total_ms,
-                        "[Proposition de correction — cliquez « Appliquer » ou dites « Valider la correction »]",
-                    )
-                else:
-                    self.shadow_buffer.inject_and_record(
-                        text_to_inject=processed.text_to_inject,
-                        raw_text=result.text,
-                        alternatives=arbitrated.ranked_alternatives[:3],
-                        audio_pcm=segment,
-                    )
-                    alt_preview = (
-                        f"(Alt: {arbitrated.ranked_alternatives[0]})"
-                        if arbitrated.ranked_alternatives
-                        else ""
-                    )
-                    self.hud.set_transcript(
-                        processed.text_to_inject, result.total_ms, alt_preview
-                    )
+            if processed.intent == VoiceIntentType.DICTATION:
+                inject_text = processed.text_to_inject
+                # Mode épellation (alphabet radio) : convertir les mots NATO en lettres, sans ponctuation auto.
+                if self._spelling_mode:
+                    spelled = text_to_nato_spelling(result.text)
+                    inject_text = spelled
+                if inject_text:
+                    if self._correction_open:
+                        proposed = inject_text.lstrip(" ").strip()
+                        self._pending_correction_text = proposed
+                        self.hud.set_correction_edit_text(proposed)
+                        mode_tag = " [Épellation]" if self._spelling_mode else ""
+                        self.hud.set_transcript(
+                            proposed,
+                            result.total_ms,
+                            f"[Proposition de correction{mode_tag} — cliquez « Appliquer » ou dites « Valider la correction »]",
+                        )
+                    else:
+                        self.shadow_buffer.inject_and_record(
+                            text_to_inject=inject_text,
+                            raw_text=result.text,
+                            alternatives=arbitrated.ranked_alternatives[:3],
+                            audio_pcm=segment,
+                        )
+                        alt_preview = (
+                            f"(Alt: {arbitrated.ranked_alternatives[0]})"
+                            if arbitrated.ranked_alternatives and not self._spelling_mode
+                            else ""
+                        )
+                        display_text = inject_text
+                        if self._spelling_mode:
+                            alt_preview = "[Épellation]"
+                        self.hud.set_transcript(
+                            display_text, result.total_ms, alt_preview
+                        )
 
             if not self.is_sleeping and not self.is_muted:
                 self.hud.set_state(MicState.LISTENING)

@@ -179,3 +179,29 @@ Lorsqu'une correction était ouverte, toute nouvelle dictée était appliquée a
 ### 3. Prochaine étape prévue
 1. Re-tester le flux de correction sécurisé en direct.
 2. Poursuivre la correction sur texte long et Phénix Studio / pipeline LoRA (avec mécanismes de snapshots et réversibilité renforcés).
+
+
+---
+
+## Session 6 — 10 Novembre 2026 : Ponctuation non forcée, Mode Épellation NATO et commande « Annuler sans apprendre »
+
+### 1. Objectif de la session
+Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du système de correction : (1) éviter la ponctuation automatique qui casse les phrases inachevées, (2) permettre l’épellation via l’alphabet radio international (NATO) pour faciliter les corrections, (3) remplacer la commande « Oups » (trop courte et facilement confondue) par une commande plus robuste.
+
+### 2. Travaux réalisés
+1. **Ponctuation automatique assouplie (`src/phenix_voice/postprocess/punctuation.py`)** :
+   - La ponctuation finale auto-ajoutée par Whisper (**point/virgule**) est désormais retirée lorsque la ponctuation n’a pas été dictée explicitement, afin de ne plus forcer une syntaxe incorrecte sur un groupe de mots ou une phrase inachevée.
+   - Les commandes de ponctuation/mise en forme dictées explicitement sont conservées (ex. « point à la ligne », « nouveau paragraphe », « point d’interrogation », « virgule », « points de suspension », etc.).
+   - Ajustement de la logique de capitalisation de début de phrase après ponctuation de fin explicite.
+2. **Mode épellation alphabet radio NATO (`src/phenix_voice/postprocess/punctuation.py`, `src/phenix_voice/main.py`, `src/phenix_voice/ui/hud.py`)** :
+   - Nouvelles intentions/commandes : **« Mode épellation »** (entrée) et **« Fin épellation » / « Mode dictée »** (sortie).
+   - En mode épellation, les énoncés sont convertis via l’alphabet radio (Alpha, Bravo, Charlie, Delta, Echo, Foxtrot, Golf, Hotel, India, Juliett, Kilo, Lima, Mike, November, Oscar, Papa, Quebec, Romeo, Sierra, Tango, Uniform, Victor, Whiskey, X-ray, Yankee, Zulu, + variantes FR/EN courantes, « espace », lettres/chiffres isolés) et injectés comme lettres, sans mise en forme de dictée classique.
+   - Fonctionne aussi pendant une correction ouverte : la proposition épelée est placée dans le champ de correction **sans application automatique** (validation explicite requise). Les commandes de contrôle/sortie restent gérées pour éviter la confusion avec des mots dictés.
+3. **Remplacement de la commande « Oups » (`punctuation.py`, `main.py`, `hud.py`, `stt/engine.py`, données/tests`)** :
+   - Commande principale remplacée par **« Annuler sans apprendre »** (formes reconnues : « Annuler sans apprendre », « Ne pas apprendre », « Ne retiens pas », « Sans apprendre », « Corriger sans apprendre », « J’ai fourché », « J’ai bafouillé »). Le mot court « Oups » n’est plus une commande active.
+   - Mise à jour de l’interface et des messages (« Sans apprendre / Effacer », aide contextuelle, états de correction), du prompt calibré STT, des règles apprises et du manifeste de calibration (`cmd_oups` mappé vers « Annuler sans apprendre ») pour cohérence.
+4. **Tests** : mise à jour de `tests/test_phase1.py` et `tests/test_phase2.py` (nouvelle commande, vérification de non-forçage du point final auto, et conversion NATO de base). Exécution ciblée : `pytest -q tests/test_phase1.py tests/test_phase2.py -k "not amd_gpu_transcription and not user_voice_calibration and not calibrated_12_commands"` → **4 passed, 3 deselected**.
+
+### 3. Prochaine étape prévue
+1. Test utilisateur en direct des trois changements (ponctuation, épellation NATO en dictée/correction, « Annuler sans apprendre ») et ajustements éventuels de robustesse phonétique.
+2. Poursuivre la correction/sélection sur textes longs (historique multi-segments + UI Automation) puis Phénix Studio / pipeline LoRA avec snapshots.
