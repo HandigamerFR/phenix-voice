@@ -68,7 +68,7 @@ class AcousticCommandProtector:
     def __init__(
         self,
         manifest_path: str | Path = "user_data/calibration/manifest.json",
-        distance_threshold: float = 0.24,
+        distance_threshold: float = 0.16,
     ) -> None:
         self.manifest_path = Path(manifest_path)
         self.distance_threshold = distance_threshold
@@ -120,7 +120,7 @@ class AcousticCommandProtector:
         if not self.templates:
             return None
         dur_s = len(audio_pcm) / sr
-        if dur_s < 0.25 or dur_s > 2.6:
+        if dur_s < 0.25 or dur_s > 1.85:
             return None
 
         emb = _extract_compact_mel_embedding(audio_pcm)

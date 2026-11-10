@@ -1,4 +1,4 @@
-"""Écoute globale des raccourcis clavier physiques et des clics souris de repositionnement."""
+"""Écoute globale des raccourcis clavier physiques (F8 : Allumer/Couper Micro, F9 : Veille vocale)."""
 
 from __future__ import annotations
 
@@ -8,27 +8,33 @@ from pynput import keyboard, mouse
 
 class GlobalInputMonitor:
     """Surveille en arrière-plan :
-    - Le raccourci physique de bascule du micro (`F8` par défaut : Actif <-> Au repos).
-    - Les clics souris ou touches de navigation (`Entrée`, `Flèches`) pour informer
-      le post-processeur que la position du curseur a pu changer.
+    - `F8` : Bascule Allumer / Couper totalement le micro (comme le bouton micro de Dragon).
+    - `F9` : Bascule Écoute Active <-> Veille vocale (« Phénix repos »).
+    - Clics souris / touches de navigation pour réinitialiser le contexte de début de phrase.
     """
 
     def __init__(
         self,
-        on_toggle_mic: Callable[[], None],
+        on_toggle_mute: Callable[[], None],
+        on_toggle_sleep: Callable[[], None] | None = None,
         on_cursor_moved: Callable[[], None] | None = None,
-        toggle_key: keyboard.Key = keyboard.Key.f8,
+        mute_key: keyboard.Key = keyboard.Key.f8,
+        sleep_key: keyboard.Key = keyboard.Key.f9,
     ) -> None:
-        self.on_toggle_mic = on_toggle_mic
+        self.on_toggle_mute = on_toggle_mute
+        self.on_toggle_sleep = on_toggle_sleep
         self.on_cursor_moved = on_cursor_moved
-        self.toggle_key = toggle_key
+        self.mute_key = mute_key
+        self.sleep_key = sleep_key
 
         self._kb_listener: keyboard.Listener | None = None
         self._mouse_listener: mouse.Listener | None = None
 
     def _on_key_press(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
-        if key == self.toggle_key:
-            self.on_toggle_mic()
+        if key == self.mute_key:
+            self.on_toggle_mute()
+        elif key == self.sleep_key and self.on_toggle_sleep:
+            self.on_toggle_sleep()
         elif key in (
             keyboard.Key.enter,
             keyboard.Key.up,

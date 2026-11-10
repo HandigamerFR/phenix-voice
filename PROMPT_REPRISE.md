@@ -36,13 +36,12 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 ### 4. État d'Avancement Actuel & Prochaine Tâche Immédiate
 - **Phases terminées** :
   - [x] **Phase 0** : Cadrage, Cahier des charges, Architecture, Journal de bord, Prompt de reprise et création du dépôt GitHub privé `phenix-voice`.
-  - [x] **Phase 1** : Socle Audio (`sounddevice` + *Silero VAD v5* calibré à `640 ms` + AGC `0.85`), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* (`435 ms - 700 ms` au palier `1200` trames), Mini-Studio d'étalonnage vocal (`calibration_studio.py`), Empreintes acoustiques DTW (`fingerprints.py`), Ponctuation hybride dysarthrique, Dictée directe `SendInput` et Barre flottante *No-Focus* (`WS_EX_NOACTIVATE`).
-- **Phase en cours** : **Phase 2 — Shadow Buffer, Sélection Vocale & Interface de Correction Anti-Dérive**
+  - [x] **Phase 1** : Socle Audio (`sounddevice` + *Silero VAD v5* calibré à `640 ms` + AGC `0.85`), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* (`100 % hors-ligne`, `local_files_only=True`), Studio d'étalonnage vocal (`calibration_studio.py`), Empreintes acoustiques DTW (`fingerprints.py`), Dictée directe `SendInput` et Barre flottante *No-Focus* (`WS_EX_NOACTIVATE`).
+  - [x] **Phase 2** : *Shadow Buffer* (`shadow_buffer.py`), **Arbitre de Plausibilité Contextuelle & Acoustique** (`plausibility.py`), Contrôle Micro 3 États sans conflit avec Dragon (`Phénix écoute`, `Phénix repos`, `Couper Phénix` + touches `F8` ON/OFF et `F9` Veille), Commandes `Corriger ça`, `Choisir un/deux/trois`, `Sélectionner [mot]`, `Presser Entrée`, et Volet de Correction Anti-Dérive séparant **« 🧠 Corriger & Apprendre »** de **« 🛡️ Corriger SANS apprendre (Oups) »** (validé à 100 % sur les 12 enregistrements réels de l'utilisateur).
+- **Phase en cours** : **Phase 3 & 4 — Vocabulaire Personnel, Importateur Moderne, Fine-Tuning LoRA (AMD DirectML) & Snapshots de Profil**
 - **Prochaine tâche immédiate à réaliser** :
-  1. Créer le *Shadow Buffer* complet conservant les derniers segments dictés `(Texte, Position, Alternatives, Audio WAV en RAM)`.
-  2. Implémenter les commandes *« Corriger ça »*, *« Corriger [mot] »* et *« Sélectionner [mot] »* directement dans la fenêtre cible sans boîte de dictée.
-  3. Ajouter à la barre flottante *No-Focus* l'affichage des alternatives numérotées (*« Choisir 1, 2... »* ou clic souris) avec la séparation stricte **« Corriger & Apprendre »** vs **« Corriger SANS apprendre (Oups / J'ai fourché) »**.
-  4. Implémenter la reconnaissance par **empreinte acoustique directe** (MFCC/DTW) pour protéger les commandes de correction.
+  1. Recueillir le retour de l'utilisateur sur la barre Phase 2 en direct.
+  2. Construire l'interface principale **Phénix Studio** (Gestionnaire de vocabulaire personnel, Importateur moderne de documents/e-mails `.mbox`/`.eml`/collage, Gestionnaire de **Snapshots / Points de restauration** du profil vocal, et lancement du **Fine-Tuning LoRA local** sur les échantillons validés).
 
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :

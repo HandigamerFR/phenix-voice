@@ -31,6 +31,16 @@ class TranscriptionResult:
     provider: str = "DmlExecutionProvider"
 
 
+def _resolve_local_or_download(repo_id: str, filename: str) -> str:
+    """Charge le fichier du modèle 100 % hors-ligne depuis le disque local s'il est déjà présent
+    (aucune requête réseau émise, même au démarrage). Ne télécharge qu'à la toute première installation.
+    """
+    try:
+        return hf_hub_download(repo_id, filename, local_files_only=True)
+    except Exception:
+        return hf_hub_download(repo_id, filename, local_files_only=False)
+
+
 def build_or_get_dynamic_encoder(
     repo_id: str,
     cache_dir: Path,
@@ -45,7 +55,7 @@ def build_or_get_dynamic_encoder(
     if patched_path.exists() and patched_path.stat().st_size > 1_000_000:
         return patched_path
 
-    raw_enc_path = hf_hub_download(repo_id, subfolder_file)
+    raw_enc_path = _resolve_local_or_download(repo_id, subfolder_file)
     model = onnx.load(raw_enc_path)
 
     # 1. Supprimer les formes intermédiaires statiques (figées à 3000 / 1500)
@@ -142,13 +152,13 @@ class WhisperDirectMLEngine:
             self.active_provider = "CPUExecutionProvider"
             self.use_gpu_iobinding = False
 
-        # Configuration du modèle et du tokenizer
-        cfg_path = hf_hub_download(repo_id, "config.json")
+        # Configuration du modèle et du tokenizer (100 % hors-ligne si déjà présent sur le SSD)
+        cfg_path = _resolve_local_or_download(repo_id, "config.json")
         with open(cfg_path, encoding="utf-8") as f:
             self.config = json.load(f)
         self.n_mels: int = int(self.config.get("num_mel_bins", 128))
 
-        tok_path = hf_hub_download(repo_id, "tokenizer.json")
+        tok_path = _resolve_local_or_download(repo_id, "tokenizer.json")
         self.tokenizer = Tokenizer.from_file(tok_path)
 
         # Tokens spéciaux Whisper
@@ -159,15 +169,17 @@ class WhisperDirectMLEngine:
         self.transcribe_token = self.tokenizer.token_to_id("<|transcribe|>")
         self.notimestamps_token = self.tokenizer.token_to_id("<|notimestamps|>")
 
-        # Chargement des sessions ONNX
+        # Chargement des sessions ONNX (100 % local, zéro requête réseau)
         so = ort.SessionOptions()
         so.log_severity_level = 3
         so.enable_mem_pattern = False
         so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
         enc_dynamic_path = build_or_get_dynamic_encoder(repo_id, self.cache_dir)
-        dec_path = hf_hub_download(repo_id, "onnx/decoder_model_fp16.onnx")
-        dec_past_path = hf_hub_download(repo_id, "onnx/decoder_with_past_model_fp16.onnx")
+        dec_path = _resolve_local_or_download(repo_id, "onnx/decoder_model_fp16.onnx")
+        dec_past_path = _resolve_local_or_download(
+            repo_id, "onnx/decoder_with_past_model_fp16.onnx"
+        )
 
         self.enc_session = ort.InferenceSession(
             str(enc_dynamic_path), so, providers=self.providers

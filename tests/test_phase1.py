@@ -39,20 +39,22 @@ def test_hybrid_punctuation_and_commands() -> None:
 
     # 3. Commandes d'annulation et de mise en veille
     r3 = proc.process("Oups.")
-    assert r3.intent == VoiceIntentType.SCRATCH_LAST
+    assert r3.intent == VoiceIntentType.OUPS_NO_LEARN
 
-    r4 = proc.process("Au repos.")
+    r4 = proc.process("Phénix repos.")
     assert r4.intent == VoiceIntentType.SLEEP
 
-    # 4. En veille, le texte dicté est ignoré jusqu'à "Écoute"
+    # 4. En veille, le texte dicté est ignoré jusqu'à "Phénix écoute"
     r5 = proc.process("Texte ignoré pendant la veille", is_sleeping=True)
     assert r5.text_to_inject == ""
 
-    r6 = proc.process("Écoute !", is_sleeping=True)
+    r6 = proc.process("Phénix écoute !", is_sleeping=True)
     assert r6.intent == VoiceIntentType.WAKE
 
 
-def test_silero_vad_and_amd_gpu_transcription(tmp_path: Path) -> None:
+def test_silero_vad_and_amd_gpu_transcription(
+    tmp_path: Path, shared_engine: WhisperDirectMLEngine
+) -> None:
     wav_path = tmp_path / "sample_fr.wav"
     ps_cmd = (
         "Add-Type -AssemblyName System.Speech; "
@@ -90,7 +92,7 @@ def test_silero_vad_and_amd_gpu_transcription(tmp_path: Path) -> None:
 
     assert len(segments) >= 1, "Silero VAD doit extraire au moins un segment de parole"
 
-    engine = WhisperDirectMLEngine()
+    engine = shared_engine
     assert engine.active_provider == "DmlExecutionProvider"
 
     # Transcription sur la Radeon RX 5700 XT
@@ -100,7 +102,9 @@ def test_silero_vad_and_amd_gpu_transcription(tmp_path: Path) -> None:
     assert result.total_ms < 850.0, f"Latence GPU trop élevée : {result.total_ms:.1f} ms"
 
 
-def test_user_voice_calibration_samples_if_present() -> None:
+def test_user_voice_calibration_samples_if_present(
+    shared_engine: WhisperDirectMLEngine,
+) -> None:
     manifest_path = Path("user_data/calibration/manifest.json")
     if not manifest_path.exists():
         pytest.skip("Pas d'échantillons d'étalonnage utilisateur présents")
@@ -109,7 +113,7 @@ def test_user_voice_calibration_samples_if_present() -> None:
     from phenix_voice.audio.fingerprints import AcousticCommandProtector
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    engine = WhisperDirectMLEngine()
+    engine = shared_engine
     proc = HybridPunctuationProcessor()
     protector = AcousticCommandProtector()
 
@@ -143,9 +147,7 @@ def test_user_voice_calibration_samples_if_present() -> None:
         processed = proc.process(eff_text, is_sleeping=is_sleep)
         results_by_id[item["id"]] = processed
 
-    assert results_by_id["cmd_ecoute"].intent == VoiceIntentType.WAKE
-    assert results_by_id["cmd_au_repos"].intent == VoiceIntentType.SLEEP
-    assert results_by_id["cmd_oups"].intent == VoiceIntentType.SCRATCH_LAST
+    assert results_by_id["cmd_oups"].intent == VoiceIntentType.OUPS_NO_LEARN
     assert "comment ça va aujourd'hui ?" in results_by_id["phrase_1"].text_to_inject.lower()
     assert "reconnaissance vocale adaptée.\n" in results_by_id["phrase_2"].text_to_inject.lower()
 

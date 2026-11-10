@@ -1,4 +1,4 @@
 @echo off
 chcp 65001 > nul
 cd /d "%~dp0"
-start "" ".\.venv\Scripts\pythonw.exe" -m phenix_voice.main
+start "" ".\.venv\Scripts\pythonw.exe" -m phenix_voice.main --mute

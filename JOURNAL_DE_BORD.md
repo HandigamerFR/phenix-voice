@@ -95,8 +95,43 @@ Construire et valider l'intégralité de la **Phase 1** : initialisation du proj
      4. Mise en place dès maintenant du module **`AcousticCommandProtector` (`src/phenix_voice/audio/fingerprints.py`)** par empreintes acoustiques Log-Mel + DTW cosinus sur les 4 commandes vitales enregistrées.
 
 ### 3. Prochaine étape prévue (Phase 2)
-Démarrer la **Phase 2 (Shadow Buffer, Sélection Vocale sur place & Interface de Correction Anti-Dérive)** :
-1. Implémenter le *Shadow Buffer* complet en RAM conservant les derniers segments dictés avec leur texte, position relative, alternatives phonétiques et extrait audio `.wav` en mémoire.
-2. Implémenter les commandes vocales *« Sélectionner [mot] »*, *« Corriger ça »* et *« Corriger [mot] »* directement dans la fenêtre active (`Shift + Flèches` / `UI Automation`).
-3. Enrichir le HUD No-Focus avec le volet de correction hybride (alternatives numérotées *« Choisir 1, 2, 3... »* ou cliquables à la souris) et les deux boutons/commandes distincts : **« Corriger & Apprendre »** vs **« Corriger SANS apprendre (Oups / J'ai fourché) »**.
-4. Ajouter la protection par **empreinte acoustique directe** (MFCC + DTW) des commandes vitales (*« Corriger ça »*, *« Oups »*, *« Au repos »*).
+Démarrer la **Phase 2 (Shadow Buffer, Sélection Vocale sur place & Interface de Correction Anti-Dérive)**.
+
+---
+
+## Session 3 — 10 Novembre 2026 : Studio d'Étalonnage Étendu (12 Commandes), Arbitre de Plausibilité Contextuelle, Mode 100 % Hors-Ligne & Phase 2 Complète
+
+### 1. Objectif de la session
+1. Éviter tout conflit de commandes de veille/réveil avec *Dragon NaturallySpeaking* pendant la période de cohabitation, et ajouter une vraie coupure totale du micro (commandes vocales dédiées + touche physique `F8`).
+2. Étendre le **Studio d'Étalonnage** aux 12 commandes quotidiennes de l'utilisateur et analyser ses nouveaux enregistrements.
+3. Remplacer le dictionnaire aveugle `A -> B` par un **Arbitre de Plausibilité Contextuelle & Acoustique (`PlausibilityArbitrator`)** qui évalue si ce que le modèle entend a du sens dans le contexte (ex. préserver *« La loi a été adoptée »* tout en corrigeant *« reconnaissance vocale adoptée pour un aligné »*).
+4. Verrouiller le fonctionnement **100 % hors-ligne (`local_files_only=True`)** pour qu'aucune requête réseau (même de vérification de cache HuggingFace au démarrage) ne soit jamais émise.
+5. Livrer la **Phase 2 complète** : *Shadow Buffer*, commandes *« Corriger ça »*, *« Choisir un / deux / trois »*, *« Sélectionner [mot] »*, *« Presser Entrée »*, et volet de correction *No-Focus* séparant **« 🧠 Corriger & Apprendre »** de **« 🛡️ Corriger SANS apprendre (Oups) »**.
+
+### 2. Travaux réalisés & Résultats
+1. **Étalonnage vocal étendu sur 12 commandes (`src/phenix_voice/ui/calibration_studio.py`)** :
+   - Enregistrement et validation par l'utilisateur de : `Phénix écoute`, `Phénix repos`, `Couper Phénix`, `Effacer ça`, `Presser Entrée`, `Corriger ça`, `Oups`, `Choisir un`, `Choisir deux`, `Point à la ligne`, `Nouveau paragraphe`, `Point d'interrogation`.
+   - Extraction automatique des confusions phonétiques propres à sa diction dans `user_data/learned_rules.json` (ex. `"phoenix hoppo" -> "Phénix repos"`, `"choisir de" -> "Choisir deux"`, `"pressez entrée" -> "Presser Entrée"`).
+2. **Arbitre de Plausibilité Contextuelle & Acoustique (`src/phenix_voice/postprocess/plausibility.py`)** :
+   - Désactivation par défaut du remplacement aveugle à 100 % sur le texte libre (conservé uniquement en option `--strict-dict` pour d'autres profils).
+   - Combinaison de 3 signaux : certitude acoustique de Whisper (`confidence` + `alternatives`), score de plausibilité linguistique française (pénalisation des bégaiements de décodage et pseudo-mots), et contexte sémantique de la phrase (préférences contextuelles `adoptée` vs `adaptée`).
+   - Les confusions de commandes ne sont déclenchées que sur des énoncés courts isolés (`<= 2,7 s`).
+3. **Verrouillage 100 % Hors-Ligne (`src/phenix_voice/stt/engine.py`)** :
+   - Ajout de `_resolve_local_or_download(..., local_files_only=True)` : zéro requête réseau pendant la parole ET zéro ping HuggingFace au démarrage dès que le modèle est en cache local.
+4. **Phase 2 : Shadow Buffer, Contrôle Micro 3 États & Barre de Correction Anti-Dérive (`shadow_buffer.py`, `hud.py`, `main.py`)** :
+   - **3 états de micro** :
+     - `🟢 ÉCOUTE ACTIVE`
+     - `🟠 VEILLE (« Phénix repos » / F9)` : réveil par *« Phénix écoute »* (aucun conflit avec *« Au repos / Écoute »* de Dragon).
+     - `🔴 MICRO COUPÉ (OFF / F8)` : déclenchable à la voix par *« Couper Phénix »* ou par la touche physique **`F8`** / clic souris. Coupe totalement le flux audio (ne se réveille jamais tout seul à la voix).
+   - **Shadow Buffer (`src/phenix_voice/os_control/shadow_buffer.py`)** :
+     - Conserve les derniers segments injectés avec leur texte, nombre exact de `VK_BACK`, alternatives et audio PCM en RAM.
+     - Supporte le remplacement sur place (`replace_last`), la sélection de mot par déplacements curseur (`select_word_in_last_segments` via `Shift + Left`) et la touche `Entrée` (`press_enter_key`).
+   - **Volet de Correction Anti-Dérive dans le HUD No-Focus (`src/phenix_voice/ui/hud.py`)** :
+     - Affiche les alternatives numérotées `1, 2, 3` cliquables à la souris (sans perte de focus clavier) ou activables à la voix (*« Choisir un / deux / trois »*), ou remplacement direct en re-dictant la phrase.
+     - Bouton/commande de bascule **« 🧠 Mode : Corriger & Apprendre »** (sauvegarde le couple `(WAV, Texte corrigé)` dans `user_data/corrections_learned/` pour le futur Fine-Tuning LoRA) vs **« 🛡️ Mode : SANS Apprendre (Oups, j'ai fourché) »** (détruit l'audio en RAM).
+5. **Validation automatisée (`tests/test_phase1.py` & `tests/test_phase2.py`)** :
+   - **7 tests sur 7 passés (`7 passed`)**, incluant la validation à **100 % sur les 12 enregistrements vocaux réels de l'utilisateur**.
+
+### 3. Prochaine étape prévue (Phase 3 & Phase 4)
+1. Tester en direct la barre Phase 2 (avec démarrage `--mute` activable par `F8`).
+2. **Phase 3 & 4** : Gestionnaire de vocabulaire personnel + importateur moderne de documents/e-mails + Pipeline de consolidation **Fine-Tuning LoRA local (DirectML)** sur les échantillons du Studio et des corrections validées + Gestionnaire de **Snapshots (Points de restauration)** du profil vocal.
