@@ -82,6 +82,7 @@ class HUDSignals(QObject):
     transcript_ready = Signal(str, float, str)
     correction_opened = Signal(str, list, bool)  # (target_text, alternatives, learn_mode)
     correction_closed = Signal()
+    correction_edit_text_set = Signal(str)  # texte dicté proposé pendant correction (sans application auto)
     help_toggled = Signal(str, bool)  # (help_text, visible)
 
 
@@ -121,6 +122,7 @@ class PhenixHUD(QWidget):
         self.signals.transcript_ready.connect(self._apply_transcript_slot)
         self.signals.correction_opened.connect(self._apply_open_correction_slot)
         self.signals.correction_closed.connect(self._apply_close_correction_slot)
+        self.signals.correction_edit_text_set.connect(self._apply_correction_edit_text_slot)
         self.signals.help_toggled.connect(self._apply_help_slot)
 
         self.setWindowFlags(
@@ -373,7 +375,8 @@ class PhenixHUD(QWidget):
         corr_layout.addLayout(manual_row)
 
         self.corr_hint_label = QLabel(
-            "💡 Astuce : cliquez dans le champ pour corriger à la main, ou re-dictez la phrase complète pendant que ce volet est ouvert."
+            "💡 Astuce : cliquez dans le champ pour corriger à la main, ou re-dictez la phrase complète (elle sera proposée sans être appliquée). "
+            "Validez ensuite avec [Appliquer la correction] ou dites « Valider la correction »."
         )
         self.corr_hint_label.setFont(QFont("Segoe UI", 8))
         self.corr_hint_label.setStyleSheet("color: #94a3b8;")
@@ -435,6 +438,10 @@ class PhenixHUD(QWidget):
 
     def hide_correction_panel(self) -> None:
         self.signals.correction_closed.emit()
+
+    def set_correction_edit_text(self, text: str) -> None:
+        """Met à jour le champ de correction avec une proposition dictée (sans l'appliquer)."""
+        self.signals.correction_edit_text_set.emit(text)
 
     def show_help(self, help_text: str, visible: bool = True) -> None:
         self.signals.help_toggled.emit(help_text, visible)
@@ -500,6 +507,10 @@ class PhenixHUD(QWidget):
         self.corr_frame.setVisible(False)
         self.correction_edit.clear()
         self._set_interactive_edit_mode(False)
+        self.adjustSize()
+
+    def _apply_correction_edit_text_slot(self, text: str) -> None:
+        self.correction_edit.setText(text.strip())
         self.adjustSize()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:

@@ -23,6 +23,7 @@ class VoiceIntentType(str, Enum):
     SELECT_TARGET = "select_target"  # « Sélectionner [mot] »
     PRESS_ENTER = "press_enter"      # « Presser Entrée »
     SHOW_HELP = "show_help"          # « Que puis-je dire ? » (liste des commandes disponibles)
+    APPLY_CORRECTION = "apply_corr"  # « Valider la correction » (applique le texte du champ de correction)
 
 
 @dataclass
@@ -79,6 +80,20 @@ SHOW_HELP_COMMANDS: set[str] = {
     "aide vocale",
     "afficher l'aide",
     "afficher les commandes",
+}
+
+APPLY_CORRECTION_COMMANDS: set[str] = {
+    "valider la correction",
+    "appliquer la correction",
+    "appliquer correction",
+    "appliquer",
+    "valider correction",
+    "valider",
+    "c'est corrigé",
+    "cest corrigé",
+    "c'est bon",
+    "cest bon",
+    "confirmer la correction",
 }
 
 SCRATCH_COMMANDS: set[str] = {
@@ -242,6 +257,12 @@ class HybridPunctuationProcessor:
             )
 
         # 4. Commandes de correction, d'édition et de touche Entrée
+        if norm in APPLY_CORRECTION_COMMANDS:
+            return ProcessedUtterance(
+                intent=VoiceIntentType.APPLY_CORRECTION,
+                raw_text=raw_text,
+                mapped_text=mapped,
+            )
         if norm in PRESS_ENTER_COMMANDS:
             self._after_sentence_end = True
             return ProcessedUtterance(

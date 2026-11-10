@@ -52,6 +52,7 @@ class PhenixVoiceController:
         self._correction_open = False
         self._learn_on_correction = True  # True = Corriger & Apprendre (LoRA), False = Oups (Sans apprendre)
         self._help_visible = False
+        self._pending_correction_text = ""
 
         self.shadow_buffer = ShadowBuffer()
         self.arbitrator = PlausibilityArbitrator(
@@ -171,6 +172,7 @@ class PhenixVoiceController:
             return
         self._correction_open = True
         self._learn_on_correction = True
+        self._pending_correction_text = last.injected_text.strip()
         self.hud.show_correction_panel(
             last.injected_text,
             last.alternatives[:3],
@@ -201,8 +203,22 @@ class PhenixVoiceController:
 
     def apply_manual_correction(self, new_text: str) -> None:
         """Applique la correction saisie manuellement dans le champ du volet de correction."""
-        if new_text.strip():
-            self._perform_replacement(new_text, learn=self._learn_on_correction)
+        cleaned = new_text.strip()
+        if cleaned:
+            self._pending_correction_text = cleaned
+            self._perform_replacement(cleaned, learn=self._learn_on_correction)
+
+    def apply_pending_correction(self) -> None:
+        """Valide explicitement la correction en attente (proposition dictée ou texte courant du volet)."""
+        if not self._correction_open:
+            self.hud.set_transcript("[Aucune correction en cours à valider]", 0.0)
+            return
+        text = self._pending_correction_text.strip()
+        if not text:
+            last = self.shadow_buffer.last_segment
+            text = last.injected_text.strip() if last else ""
+        if text:
+            self._perform_replacement(text, learn=self._learn_on_correction)
 
     def toggle_help(self) -> None:
         self._help_visible = not self._help_visible
@@ -233,8 +249,9 @@ class PhenixVoiceController:
             state = "<b>État : CORRECTION DU DERNIER SEGMENT</b>"
             cmds = (
                 "• <b>« Choisir un / deux / trois »</b> ou clic souris : remplacer par l'alternative proposée<br>"
-                "• <b>Re-dicter la phrase</b> : remplacer directement le segment en cours de correction<br>"
-                "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle<br>"
+                "• <b>Re-dicter la phrase</b> : propose une nouvelle correction dans le champ (PAS appliquée automatiquement)<br>"
+                "• <b>« Valider la correction »</b> (ou bouton <b>[Appliquer la correction]</b>) : appliquer explicitement la correction<br>"
+                "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle précise<br>"
                 "• <b>« Oups »</b> ou bascule du bouton : passer en mode <b>SANS apprendre</b> (ne pollue pas le profil)<br>"
                 "• <b>« Effacer ça »</b> : annuler le segment<br>"
                 "• <b>« Phénix repos »</b> : mettre en veille, <b>« Couper Phénix »</b> : couper le micro<br>"
@@ -282,6 +299,7 @@ class PhenixVoiceController:
     def _close_correction_bar(self) -> None:
         if self._correction_open:
             self._correction_open = False
+            self._pending_correction_text = ""
             self.hud.hide_correction_panel()
 
     def _save_learned_correction_sample(
@@ -473,6 +491,19 @@ class PhenixVoiceController:
                 self.hud.set_state(MicState.LISTENING)
                 continue
 
+            if processed.intent == VoiceIntentType.APPLY_CORRECTION:
+                if self._correction_open:
+                    self.apply_pending_correction()
+                elif processed.text_to_inject:
+                    self.shadow_buffer.inject_and_record(
+                        text_to_inject=processed.text_to_inject,
+                        raw_text=result.text,
+                        alternatives=arbitrated.ranked_alternatives[:3],
+                        audio_pcm=segment,
+                    )
+                self.hud.set_state(MicState.LISTENING)
+                continue
+
             if processed.intent == VoiceIntentType.SELECT_TARGET:
                 ok = self.shadow_buffer.select_word_in_last_segments(
                     processed.target_arg
@@ -486,16 +517,21 @@ class PhenixVoiceController:
                 self.hud.set_state(MicState.LISTENING)
                 continue
 
-            # Dictée de texte : si le volet « Corriger ça » était ouvert, ce nouveau souffle
-            # remplace directement l'ancien segment !
+            # Dictée de texte : si le volet « Corriger ça » est ouvert, la nouvelle dictée est
+            # proposée dans le champ de correction SANS application automatique (anti-bafouillage / anti-coupure).
+            # L'utilisateur doit valider explicitement (bouton, « Valider la correction », ou choix 1/2/3).
             if (
                 processed.intent == VoiceIntentType.DICTATION
                 and processed.text_to_inject
             ):
                 if self._correction_open:
-                    self._perform_replacement(
-                        processed.text_to_inject.lstrip(" "),
-                        learn=self._learn_on_correction,
+                    proposed = processed.text_to_inject.lstrip(" ").strip()
+                    self._pending_correction_text = proposed
+                    self.hud.set_correction_edit_text(proposed)
+                    self.hud.set_transcript(
+                        proposed,
+                        result.total_ms,
+                        "[Proposition de correction — cliquez « Appliquer » ou dites « Valider la correction »]",
                     )
                 else:
                     self.shadow_buffer.inject_and_record(

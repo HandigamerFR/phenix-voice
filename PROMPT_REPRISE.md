@@ -40,9 +40,9 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
   - [x] **Phase 2 (+ itérations)** : *Shadow Buffer* (dernier segment), **Arbitre de Plausibilité Contextuelle & Acoustique** (pas de remplacement aveugle par défaut), Contrôle Micro 3 États sans conflit Dragon (`Phénix écoute`, `Phénix repos`, `Couper Phénix` + `F8`/`F9`), Correction Anti-Dérive (**« Corriger & Apprendre »** vs **« SANS apprendre »**), **Aide vocale contextuelle « Que puis-je dire ? »**, **correction manuelle par champ éditable** dans le volet, et démarrage **100 % hors-ligne** (`local_files_only` quand modèle en cache).
 - **Phase en cours** : **Phase 3 & 4 — Correction sur Texte Long, Vocabulaire, Fine-Tuning LoRA (AMD DirectML) & Snapshots**
 - **Prochaine tâche immédiate à réaliser** :
-  1. Valider en direct l'aide « Que puis-je dire ? » et la correction manuelle (ergonomie focus/retour fenêtre cible).
+  1. Valider en direct le **flux de correction sécurisé** (re-dictée = proposition, validation explicite par « Valider la correction » / bouton / choix 1-2-3) et l'aide « Que puis-je dire ? ».
   2. Implémenter la **correction & sélection sur textes longs** : historique multi-segments du *Shadow Buffer* + lecture/sélection via *Windows UI Automation (TextPattern/ValuePattern)* avec gestion des occurrences multiples (« sélectionner/corriger [mot] », choix d'occurrence).
-  3. Construire **Phénix Studio** (vocabulaire, import `.mbox`/`.eml`/docs, **mises à jour de modèle manuelles avec avertissement + sauvegarde anti-casse**, snapshots/restauration profil, préparation **Fine-Tuning LoRA local** DirectML).
+  3. Construire **Phénix Studio** (vocabulaire, import `.mbox`/`.eml`/docs, **mises à jour de modèle manuelles avec avertissement + sauvegarde anti-casse**, snapshots/restauration profil, préparation **Fine-Tuning LoRA local** DirectML avec réversibilité).
 
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :
