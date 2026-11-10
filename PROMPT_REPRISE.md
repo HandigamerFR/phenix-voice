@@ -37,13 +37,12 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 - **Phases terminées** :
   - [x] **Phase 0** : Cadrage, Cahier des charges, Architecture, Journal de bord, Prompt de reprise et création du dépôt GitHub privé `phenix-voice`.
   - [x] **Phase 1** : Socle Audio (*Silero VAD* calibré, AGC), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* optimisé, Studio d'étalonnage vocal, Empreintes acoustiques DTW, Dictée directe `SendInput` et barre *No-Focus* (`WS_EX_NOACTIVATE`).
-  - [x] **Phase 2 (+ itérations)** : *Shadow Buffer* (dernier segment), **Arbitre de Plausibilité Contextuelle & Acoustique** (pas de remplacement aveugle par défaut), Contrôle Micro 3 États sans conflit Dragon (`Phénix écoute`, `Phénix repos`, `Couper Phénix` + `F8`/`F9`), Correction Anti-Dérive (**« Corriger & Apprendre »** vs **« SANS apprendre »**), **Aide vocale contextuelle « Que puis-je dire ? »**, **correction manuelle par champ éditable** dans le volet, et démarrage **100 % hors-ligne** (`local_files_only` quand modèle en cache).
+  - [x] **Phase 2 (+ itérations)** : *Shadow Buffer* (dernier segment), **Arbitre de Plausibilité Contextuelle & Acoustique**, Contrôle Micro 3 États sans conflit Dragon (`Phénix écoute`, `Phénix repos`, `Couper Phénix` + `F8`/`F9`), Correction Anti-Dérive (**« Corriger & Apprendre »** vs **« Annuler sans apprendre »**, validation explicite), **Aide « Que puis-je dire ? »**, correction manuelle, démarrage **100 % hors-ligne**, **ponctuation finale non forcée** (point/virgule auto retirés si non dictés), et **Mode épellation (alphabet radio NATO)**.
 - **Phase en cours** : **Phase 3 & 4 — Correction sur Texte Long, Vocabulaire, Fine-Tuning LoRA (AMD DirectML) & Snapshots**
 - **Prochaine tâche immédiate à réaliser** :
-  1. Valider en direct le **flux de correction sécurisé** (re-dictée = proposition, validation explicite par « Valider la correction » / bouton / choix 1-2-3) et l'aide « Que puis-je dire ? ».
+  1. Valider en direct : ponctuation non forcée sur phrases inachevées, **Mode épellation** (`Mode épellation` / `Fin épellation`, Alpha Bravo Charlie…), nouvelle commande **« Annuler sans apprendre »** (remplace « Oups »), et flux de correction sécurisé.
   2. Implémenter la **correction & sélection sur textes longs** : historique multi-segments du *Shadow Buffer* + lecture/sélection via *Windows UI Automation (TextPattern/ValuePattern)* avec gestion des occurrences multiples (« sélectionner/corriger [mot] », choix d'occurrence).
   3. Construire **Phénix Studio** (vocabulaire, import `.mbox`/`.eml`/docs, **mises à jour de modèle manuelles avec avertissement + sauvegarde anti-casse**, snapshots/restauration profil, préparation **Fine-Tuning LoRA local** DirectML avec réversibilité).
-
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :
 1. Ajouter le compte-rendu détaillé des travaux dans `JOURNAL_DE_BORD.md`.
