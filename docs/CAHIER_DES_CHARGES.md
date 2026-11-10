@@ -19,10 +19,14 @@
 
 ### Module 1 : Dictée Universelle (« Zéro Boîte de Dictée »)
 - **Écriture directe universelle** : Capacité d'écrire dans 100 % des fenêtres Windows sans jamais imposer de boîte de dictée intermédiaire.
-- **Tampon mémoire synchronisé (*Shadow Buffer*)** :
-  - Le logiciel conserve en mémoire vive les dernières phrases dictées, la position relative du curseur et les extraits audio correspondants.
-  - Il écoute les événements clavier/souris et interroge *Windows UI Automation* pour savoir où se trouve le curseur.
-  - Lorsque l'utilisateur demande de sélectionner ou corriger un mot récent, Phénix Voice pilote directement la sélection (`Shift + Flèches` / `Backspace` / remplacement Unicode) dans la fenêtre active.
+- **Tampon mémoire synchronisé (*Shadow Buffer*) & Correction sur Texte Long** :
+  - Le logiciel conserve en mémoire vive l'historique multi-paragraphes des phrases dictées, la position relative du curseur et les extraits audio correspondants à chaque segment.
+  - Pour permettre **la sélection et la correction dans des textes longs** (et pas uniquement sur le tout dernier souffle dicté), Phénix Voice combinera le *Shadow Buffer* avec la lecture directe du champ texte via *Windows UI Automation (`TextPattern` / `ValuePattern`)* :
+    - L'utilisateur pourra dire *« Sélectionner [mot/expression] »* ou *« Corriger [mot/expression] »* sur n'importe quel mot d'un long paragraphe (avec numérotation des occurrences si le mot apparaît plusieurs fois à l'écran, comme dans Dragon).
+    - Le logiciel retrouvera l'extrait audio correspondant dans l'historique de session afin de permettre *« Corriger & Apprendre »* même sur une phrase dictée plusieurs minutes plus tôt.
+- **Politique 100 % Hors-Ligne & Mise à jour sécurisée des modèles** :
+  - Aucune requête réseau n'est jamais émise pendant la dictée ni au démarrage normal du logiciel.
+  - La vérification ou la mise à jour d'un modèle IA depuis Internet ne peut se faire que sur action explicite de l'utilisateur dans *Phénix Studio*, précédée d'un **avertissement clair** et d'une sauvegarde de secours de l'ancien modèle pour garantir qu'une mise à jour ne puisse jamais casser l'application.
 - **Affichage par souffle / micro-pause** :
   - Détection d'activité vocale (*VAD*) ultra-rapide : dès qu'une micro-pause (300 à 500 ms configurable) est détectée, le segment est transcrit et écrit.
 - **Ponctuation et mise en forme hybrides** :

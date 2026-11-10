@@ -36,12 +36,13 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 ### 4. État d'Avancement Actuel & Prochaine Tâche Immédiate
 - **Phases terminées** :
   - [x] **Phase 0** : Cadrage, Cahier des charges, Architecture, Journal de bord, Prompt de reprise et création du dépôt GitHub privé `phenix-voice`.
-  - [x] **Phase 1** : Socle Audio (`sounddevice` + *Silero VAD v5* calibré à `640 ms` + AGC `0.85`), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* (`100 % hors-ligne`, `local_files_only=True`), Studio d'étalonnage vocal (`calibration_studio.py`), Empreintes acoustiques DTW (`fingerprints.py`), Dictée directe `SendInput` et Barre flottante *No-Focus* (`WS_EX_NOACTIVATE`).
-  - [x] **Phase 2** : *Shadow Buffer* (`shadow_buffer.py`), **Arbitre de Plausibilité Contextuelle & Acoustique** (`plausibility.py`), Contrôle Micro 3 États sans conflit avec Dragon (`Phénix écoute`, `Phénix repos`, `Couper Phénix` + touches `F8` ON/OFF et `F9` Veille), Commandes `Corriger ça`, `Choisir un/deux/trois`, `Sélectionner [mot]`, `Presser Entrée`, et Volet de Correction Anti-Dérive séparant **« 🧠 Corriger & Apprendre »** de **« 🛡️ Corriger SANS apprendre (Oups) »** (validé à 100 % sur les 12 enregistrements réels de l'utilisateur).
-- **Phase en cours** : **Phase 3 & 4 — Vocabulaire Personnel, Importateur Moderne, Fine-Tuning LoRA (AMD DirectML) & Snapshots de Profil**
+  - [x] **Phase 1** : Socle Audio (*Silero VAD* calibré, AGC), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* optimisé, Studio d'étalonnage vocal, Empreintes acoustiques DTW, Dictée directe `SendInput` et barre *No-Focus* (`WS_EX_NOACTIVATE`).
+  - [x] **Phase 2 (+ itérations)** : *Shadow Buffer* (dernier segment), **Arbitre de Plausibilité Contextuelle & Acoustique** (pas de remplacement aveugle par défaut), Contrôle Micro 3 États sans conflit Dragon (`Phénix écoute`, `Phénix repos`, `Couper Phénix` + `F8`/`F9`), Correction Anti-Dérive (**« Corriger & Apprendre »** vs **« SANS apprendre »**), **Aide vocale contextuelle « Que puis-je dire ? »**, **correction manuelle par champ éditable** dans le volet, et démarrage **100 % hors-ligne** (`local_files_only` quand modèle en cache).
+- **Phase en cours** : **Phase 3 & 4 — Correction sur Texte Long, Vocabulaire, Fine-Tuning LoRA (AMD DirectML) & Snapshots**
 - **Prochaine tâche immédiate à réaliser** :
-  1. Recueillir le retour de l'utilisateur sur la barre Phase 2 en direct.
-  2. Construire l'interface principale **Phénix Studio** (Gestionnaire de vocabulaire personnel, Importateur moderne de documents/e-mails `.mbox`/`.eml`/collage, Gestionnaire de **Snapshots / Points de restauration** du profil vocal, et lancement du **Fine-Tuning LoRA local** sur les échantillons validés).
+  1. Valider en direct l'aide « Que puis-je dire ? » et la correction manuelle (ergonomie focus/retour fenêtre cible).
+  2. Implémenter la **correction & sélection sur textes longs** : historique multi-segments du *Shadow Buffer* + lecture/sélection via *Windows UI Automation (TextPattern/ValuePattern)* avec gestion des occurrences multiples (« sélectionner/corriger [mot] », choix d'occurrence).
+  3. Construire **Phénix Studio** (vocabulaire, import `.mbox`/`.eml`/docs, **mises à jour de modèle manuelles avec avertissement + sauvegarde anti-casse**, snapshots/restauration profil, préparation **Fine-Tuning LoRA local** DirectML).
 
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :

@@ -22,6 +22,7 @@ class VoiceIntentType(str, Enum):
     CHOOSE_ALT = "choose_alt"        # « Choisir un / deux / trois »
     SELECT_TARGET = "select_target"  # « Sélectionner [mot] »
     PRESS_ENTER = "press_enter"      # « Presser Entrée »
+    SHOW_HELP = "show_help"          # « Que puis-je dire ? » (liste des commandes disponibles)
 
 
 @dataclass
@@ -64,6 +65,20 @@ MUTE_COMMANDS: set[str] = {
     "arrêter phénix",
     "couper le micro",
     "éteindre le micro",
+}
+
+SHOW_HELP_COMMANDS: set[str] = {
+    "que puis-je dire",
+    "qu'est-ce que je peux dire",
+    "quest-ce que je peux dire",
+    "quelles sont les commandes",
+    "quelle sont les commandes",
+    "liste des commandes",
+    "aide commandes",
+    "commandes disponibles",
+    "aide vocale",
+    "afficher l'aide",
+    "afficher les commandes",
 }
 
 SCRATCH_COMMANDS: set[str] = {
@@ -183,7 +198,7 @@ class HybridPunctuationProcessor:
         )
         norm = normalize_key(mapped)
 
-        # 2. En mode veille vocale (« Phénix repos »), seules « Phénix écoute » ou « Couper Phénix » sont actives
+        # 2. En mode veille vocale (« Phénix repos »), seules quelques commandes de contrôle restent actives
         if is_sleeping:
             if norm in WAKE_COMMANDS or any(norm.endswith(cmd) for cmd in WAKE_COMMANDS):
                 return ProcessedUtterance(
@@ -195,6 +210,12 @@ class HybridPunctuationProcessor:
                     raw_text=raw_text,
                     mapped_text=mapped,
                 )
+            if norm in SHOW_HELP_COMMANDS:
+                return ProcessedUtterance(
+                    intent=VoiceIntentType.SHOW_HELP,
+                    raw_text=raw_text,
+                    mapped_text=mapped,
+                )
             return ProcessedUtterance(
                 intent=VoiceIntentType.DICTATION,
                 text_to_inject="",
@@ -202,7 +223,7 @@ class HybridPunctuationProcessor:
                 mapped_text=mapped,
             )
 
-        # 3. Commandes de contrôle du micro
+        # 3. Commandes de contrôle du micro et aide
         if norm in MUTE_COMMANDS:
             return ProcessedUtterance(
                 intent=VoiceIntentType.MUTE_MIC, raw_text=raw_text, mapped_text=mapped
@@ -214,6 +235,10 @@ class HybridPunctuationProcessor:
         if norm in WAKE_COMMANDS:
             return ProcessedUtterance(
                 intent=VoiceIntentType.WAKE, raw_text=raw_text, mapped_text=mapped
+            )
+        if norm in SHOW_HELP_COMMANDS:
+            return ProcessedUtterance(
+                intent=VoiceIntentType.SHOW_HELP, raw_text=raw_text, mapped_text=mapped
             )
 
         # 4. Commandes de correction, d'édition et de touche Entrée

@@ -1,7 +1,8 @@
-"""Barre flottante No-Focus PySide6 (HUD Phénix Voice — Phase 2) :
+"""Barre flottante No-Focus PySide6 (HUD Phénix Voice — Phase 2+) :
 - 3 états de micro (Actif / Veille vocale « Phénix repos » / Micro Coupé F8).
-- Volet de correction Anti-Dérive avec alternatives numérotées (1, 2, 3) cliquables ou vocales,
+- Volet de correction Anti-Dérive : alternatives 1/2/3, édition manuelle à la souris, re-dictée vocale,
   et séparation stricte « 🧠 Corriger & Apprendre » vs « 🛡️ Corriger SANS apprendre (Oups) ».
+- Panneau d'aide contextuel « Que puis-je dire ? » listant les commandes vocales disponibles.
 """
 
 from __future__ import annotations
@@ -9,13 +10,14 @@ from __future__ import annotations
 import ctypes
 from enum import Enum
 from typing import Callable
-from PySide6.QtCore import QPoint, Qt, Signal, QObject
+from PySide6.QtCore import QEvent, QPoint, Qt, Signal, QObject
 from PySide6.QtGui import QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -80,10 +82,14 @@ class HUDSignals(QObject):
     transcript_ready = Signal(str, float, str)
     correction_opened = Signal(str, list, bool)  # (target_text, alternatives, learn_mode)
     correction_closed = Signal()
+    help_toggled = Signal(str, bool)  # (help_text, visible)
 
 
 class PhenixHUD(QWidget):
-    """Barre flottante toujours au premier plan qui ne vole jamais le focus clavier (WS_EX_NOACTIVATE)."""
+    """Barre flottante toujours au premier plan.
+    No-Focus (WS_EX_NOACTIVATE) par défaut pour ne jamais voler le curseur de la fenêtre cible,
+    mais devient temporairement activable quand l'utilisateur clique pour éditer manuellement une correction.
+    """
 
     def __init__(
         self,
@@ -93,6 +99,8 @@ class PhenixHUD(QWidget):
         on_oups_scratch: Callable[[], None],
         on_select_alternative: Callable[[int], None],
         on_toggle_learn_mode: Callable[[], None],
+        on_apply_manual_correction: Callable[[str], None],
+        on_toggle_help: Callable[[], None],
         on_quit: Callable[[], None],
     ) -> None:
         super().__init__(None)
@@ -102,14 +110,18 @@ class PhenixHUD(QWidget):
         self.on_oups_scratch = on_oups_scratch
         self.on_select_alternative = on_select_alternative
         self.on_toggle_learn_mode = on_toggle_learn_mode
+        self.on_apply_manual_correction = on_apply_manual_correction
+        self.on_toggle_help = on_toggle_help
         self.on_quit = on_quit
         self._drag_offset: QPoint | None = None
+        self._is_noactivate = True
 
         self.signals = HUDSignals()
         self.signals.state_changed.connect(self._apply_state_slot)
         self.signals.transcript_ready.connect(self._apply_transcript_slot)
         self.signals.correction_opened.connect(self._apply_open_correction_slot)
         self.signals.correction_closed.connect(self._apply_close_correction_slot)
+        self.signals.help_toggled.connect(self._apply_help_slot)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -132,11 +144,28 @@ class PhenixHUD(QWidget):
         hwnd = int(self.winId())
         if hwnd:
             ex_style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            user32.SetWindowLongW(
-                hwnd,
-                GWL_EXSTYLE,
-                ex_style | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-            )
+            if self._is_noactivate:
+                user32.SetWindowLongW(
+                    hwnd,
+                    GWL_EXSTYLE,
+                    ex_style | WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+                )
+            else:
+                user32.SetWindowLongW(
+                    hwnd,
+                    GWL_EXSTYLE,
+                    (ex_style & ~WS_EX_NOACTIVATE) | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+                )
+
+    def _set_interactive_edit_mode(self, enabled: bool) -> None:
+        """Autorise temporairement le focus clavier pour saisir une correction manuelle à la souris."""
+        self._is_noactivate = not enabled
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not enabled)
+        self._enforce_win32_noactivate()
+        if enabled:
+            self.activateWindow()
+            self.correction_edit.setFocus()
+            self.correction_edit.selectAll()
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
@@ -154,6 +183,11 @@ class PhenixHUD(QWidget):
             QFrame#corrFrame {
                 background-color: #1e293b;
                 border: 1px solid #38bdf8;
+                border-radius: 9px;
+            }
+            QFrame#helpFrame {
+                background-color: #0f172a;
+                border: 1px solid #64748b;
                 border-radius: 9px;
             }
             QLabel {
@@ -181,6 +215,11 @@ class PhenixHUD(QWidget):
                 border-color: #14b8a6;
                 color: #99f6e4;
             }
+            QPushButton#helpBtn {
+                background-color: #312e81;
+                border-color: #6366f1;
+                color: #e0e7ff;
+            }
             QPushButton#scratchBtn {
                 background-color: #3b1d2e;
                 border-color: #9d174d;
@@ -197,11 +236,24 @@ class PhenixHUD(QWidget):
                 background-color: #0284c7;
                 color: white;
             }
+            QPushButton#applyBtn {
+                background-color: #14532d;
+                border-color: #22c55e;
+                color: #dcfce7;
+            }
             QPushButton#quitBtn {
                 background-color: #2a1818;
                 border-color: #7f1d1d;
                 color: #fecaca;
                 padding: 5px 9px;
+            }
+            QLineEdit#corrEdit {
+                background-color: #0f172a;
+                color: #f8fafc;
+                border: 1px solid #38bdf8;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
             }
             """
         )
@@ -237,6 +289,12 @@ class PhenixHUD(QWidget):
         self.sleep_btn.clicked.connect(self.on_toggle_sleep)
         top_row.addWidget(self.sleep_btn)
 
+        self.help_btn = QPushButton("❓ Que puis-je dire ?")
+        self.help_btn.setObjectName("helpBtn")
+        self.help_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.help_btn.clicked.connect(self.on_toggle_help)
+        top_row.addWidget(self.help_btn)
+
         self.corr_btn = QPushButton("✏️ Corriger ça")
         self.corr_btn.setObjectName("corrBtn")
         self.corr_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -264,7 +322,7 @@ class PhenixHUD(QWidget):
         self.transcript_label.setWordWrap(False)
         card_layout.addWidget(self.transcript_label)
 
-        # Ligne 3 (repliée par défaut) : Volet de Correction Anti-Dérive (Phase 2)
+        # Ligne 3 (repliée par défaut) : Volet de Correction Anti-Dérive
         self.corr_frame = QFrame(self.card)
         self.corr_frame.setObjectName("corrFrame")
         corr_layout = QVBoxLayout(self.corr_frame)
@@ -273,7 +331,7 @@ class PhenixHUD(QWidget):
 
         corr_header = QHBoxLayout()
         self.corr_title_label = QLabel(
-            "✏️ Correction : cliquez sur 1/2/3, dites « Choisir 1/2/3 », ou re-dictez directement la bonne phrase :"
+            "✏️ Correction : choisissez 1/2/3, modifiez le texte à la main, ou re-dictez directement :"
         )
         self.corr_title_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.corr_title_label.setStyleSheet("color: #38bdf8;")
@@ -297,11 +355,62 @@ class PhenixHUD(QWidget):
             self.alt_buttons.append(btn)
 
         corr_layout.addLayout(self.alt_row)
+
+        # Édition manuelle (clavier/souris) du segment corrigé
+        manual_row = QHBoxLayout()
+        manual_row.setSpacing(8)
+        self.correction_edit = QLineEdit()
+        self.correction_edit.setObjectName("corrEdit")
+        self.correction_edit.setPlaceholderText("Modifiez ici le texte à corriger...")
+        self.correction_edit.installEventFilter(self)
+        manual_row.addWidget(self.correction_edit, stretch=1)
+
+        self.apply_edit_btn = QPushButton("✅ Appliquer la correction")
+        self.apply_edit_btn.setObjectName("applyBtn")
+        self.apply_edit_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.apply_edit_btn.clicked.connect(self._on_apply_manual_clicked)
+        manual_row.addWidget(self.apply_edit_btn)
+        corr_layout.addLayout(manual_row)
+
+        self.corr_hint_label = QLabel(
+            "💡 Astuce : cliquez dans le champ pour corriger à la main, ou re-dictez la phrase complète pendant que ce volet est ouvert."
+        )
+        self.corr_hint_label.setFont(QFont("Segoe UI", 8))
+        self.corr_hint_label.setStyleSheet("color: #94a3b8;")
+        corr_layout.addWidget(self.corr_hint_label)
+
         self.corr_frame.setVisible(False)
         card_layout.addWidget(self.corr_frame)
 
+        # Ligne 4 (repliée par défaut) : Panneau « Que puis-je dire ? »
+        self.help_frame = QFrame(self.card)
+        self.help_frame.setObjectName("helpFrame")
+        help_layout = QVBoxLayout(self.help_frame)
+        help_layout.setContentsMargins(10, 8, 10, 8)
+        self.help_label = QLabel("")
+        self.help_label.setFont(QFont("Segoe UI", 9))
+        self.help_label.setStyleSheet("color: #e2e8f0;")
+        self.help_label.setWordWrap(True)
+        self.help_label.setTextFormat(Qt.TextFormat.RichText)
+        help_layout.addWidget(self.help_label)
+        self.help_frame.setVisible(False)
+        card_layout.addWidget(self.help_frame)
+
         outer.addWidget(self.card)
-        self.setFixedWidth(840)
+        self.setFixedWidth(920)
+
+    def eventFilter(self, obj, event):  # type: ignore[override]
+        if obj is self.correction_edit:
+            if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.FocusIn):
+                if self._is_noactivate:
+                    self._set_interactive_edit_mode(True)
+        return super().eventFilter(obj, event)
+
+    def _on_apply_manual_clicked(self) -> None:
+        text = self.correction_edit.text().strip()
+        if text:
+            self.on_apply_manual_correction(text)
+        self._set_interactive_edit_mode(False)
 
     def _position_top_center(self) -> None:
         screen = QApplication.primaryScreen()
@@ -326,6 +435,14 @@ class PhenixHUD(QWidget):
 
     def hide_correction_panel(self) -> None:
         self.signals.correction_closed.emit()
+
+    def show_help(self, help_text: str, visible: bool = True) -> None:
+        self.signals.help_toggled.emit(help_text, visible)
+
+    def _apply_help_slot(self, help_text: str, visible: bool) -> None:
+        self.help_label.setText(help_text)
+        self.help_frame.setVisible(visible)
+        self.adjustSize()
 
     def _apply_state_slot(self, state_val: str) -> None:
         state = MicState(state_val)
@@ -353,9 +470,11 @@ class PhenixHUD(QWidget):
     def _apply_open_correction_slot(
         self, target_text: str, alternatives: list[str], learn_enabled: bool
     ) -> None:
+        clean_target = target_text.strip()
         self.corr_title_label.setText(
-            f"✏️ Corriger « {target_text.strip()} » — cliquez 1/2/3, dites « Choisir un/deux », ou re-dictez :"
+            f"✏️ Corriger « {clean_target} » — choisissez 1/2/3, modifiez à la main, ou re-dictez :"
         )
+        self.correction_edit.setText(clean_target)
         if learn_enabled:
             self.learn_mode_btn.setText("🧠 Mode : Corriger & Apprendre")
             self.learn_mode_btn.setStyleSheet(
@@ -379,6 +498,8 @@ class PhenixHUD(QWidget):
 
     def _apply_close_correction_slot(self) -> None:
         self.corr_frame.setVisible(False)
+        self.correction_edit.clear()
+        self._set_interactive_edit_mode(False)
         self.adjustSize()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:

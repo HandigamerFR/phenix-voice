@@ -51,6 +51,7 @@ class PhenixVoiceController:
         # État du volet de correction Phase 2
         self._correction_open = False
         self._learn_on_correction = True  # True = Corriger & Apprendre (LoRA), False = Oups (Sans apprendre)
+        self._help_visible = False
 
         self.shadow_buffer = ShadowBuffer()
         self.arbitrator = PlausibilityArbitrator(
@@ -71,6 +72,8 @@ class PhenixVoiceController:
             on_oups_scratch=self.oups_scratch_without_learning,
             on_select_alternative=self.apply_correction_choice,
             on_toggle_learn_mode=self.toggle_correction_learn_mode,
+            on_apply_manual_correction=self.apply_manual_correction,
+            on_toggle_help=self.toggle_help,
             on_quit=self.shutdown,
         )
 
@@ -196,6 +199,62 @@ class PhenixVoiceController:
         replacement = last.alternatives[idx]
         self._perform_replacement(replacement, learn=self._learn_on_correction)
 
+    def apply_manual_correction(self, new_text: str) -> None:
+        """Applique la correction saisie manuellement dans le champ du volet de correction."""
+        if new_text.strip():
+            self._perform_replacement(new_text, learn=self._learn_on_correction)
+
+    def toggle_help(self) -> None:
+        self._help_visible = not self._help_visible
+        self.hud.show_help(self._build_help_text(), self._help_visible)
+
+    def _close_help(self) -> None:
+        if self._help_visible:
+            self._help_visible = False
+            self.hud.show_help("", False)
+
+    def _build_help_text(self) -> str:
+        common = (
+            "• <b>F8</b> ou <b>« Couper Phénix »</b> : allumer/couper totalement le micro<br>"
+            "• <b>F9</b> : basculer Écoute active / Veille vocale<br>"
+            "• <b>« Que puis-je dire ? »</b> : afficher/masquer cette aide"
+        )
+        if self.is_muted:
+            state = "<b>État : MICRO COUPÉ (OFF)</b><br>Le micro n'écoute rien. Réactivez-le avec <b>F8</b> ou le bouton <b>[🔌 Micro ON/OFF (F8)]</b>."
+            cmds = common
+        elif self.is_sleeping:
+            state = "<b>État : VEILLE VOCALE (« Phénix repos »)</b>"
+            cmds = (
+                "• <b>« Phénix écoute »</b> : reprendre la dictée<br>"
+                "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
+                + common
+            )
+        elif self._correction_open:
+            state = "<b>État : CORRECTION DU DERNIER SEGMENT</b>"
+            cmds = (
+                "• <b>« Choisir un / deux / trois »</b> ou clic souris : remplacer par l'alternative proposée<br>"
+                "• <b>Re-dicter la phrase</b> : remplacer directement le segment en cours de correction<br>"
+                "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle<br>"
+                "• <b>« Oups »</b> ou bascule du bouton : passer en mode <b>SANS apprendre</b> (ne pollue pas le profil)<br>"
+                "• <b>« Effacer ça »</b> : annuler le segment<br>"
+                "• <b>« Phénix repos »</b> : mettre en veille, <b>« Couper Phénix »</b> : couper le micro<br>"
+                + common
+            )
+        else:
+            state = "<b>État : ÉCOUTE ACTIVE (dictée libre)</b>"
+            cmds = (
+                "• <b>Dictée libre</b> : parlez normalement, le texte s'écrit dans la fenêtre active<br>"
+                "• <b>« Phénix repos »</b> : mettre en veille vocale (sans conflit avec Dragon)<br>"
+                "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
+                "• <b>« Corriger ça »</b> : ouvrir les alternatives (1/2/3) et la correction manuelle du dernier souffle<br>"
+                "• <b>« Effacer ça »</b> : supprimer le dernier souffle<br>"
+                "• <b>« Oups »</b> : effacer le dernier souffle SANS apprendre (« j'ai fourché »)<br>"
+                "• <b>« Presser Entrée »</b> : appuyer sur Entrée<br>"
+                "• <b>« Point à la ligne »</b>, <b>« Nouveau paragraphe »</b>, <b>« Virgule »</b>, <b>« Point d'interrogation »</b> etc.<br>"
+                + common
+            )
+        return f"{state}<br><br>{cmds}"
+
     def _perform_replacement(self, new_text: str, learn: bool) -> None:
         old_seg, new_seg = self.shadow_buffer.replace_last(
             new_text, discard_audio=not learn
@@ -265,12 +324,16 @@ class PhenixVoiceController:
         if self.is_muted:
             self.capture.set_paused(True)
             self.hud.set_state(MicState.MUTED)
+            self.hud.set_transcript(
+                "Micro coupé — Appuyez sur F8 ou dites « Que puis-je dire ? » (après réactivation) pour l'aide",
+                0.0,
+            )
         elif self.is_sleeping:
             self.hud.set_state(MicState.SLEEPING)
         else:
             self.hud.set_state(MicState.LISTENING)
             self.hud.set_transcript(
-                "Prêt — Dites « Phénix repos », « Couper Phénix », « Corriger ça », ou appuyez sur F8",
+                "Prêt — Dites « Que puis-je dire ? » pour l'aide, ou « Couper Phénix » pour couper le micro",
                 0.0,
             )
 
@@ -341,6 +404,16 @@ class PhenixVoiceController:
             # Routage des intentions
             if processed.intent == VoiceIntentType.MUTE_MIC:
                 self.mute_mic_completely()
+                continue
+
+            if processed.intent == VoiceIntentType.SHOW_HELP:
+                self.toggle_help()
+                if self.is_muted:
+                    self.hud.set_state(MicState.MUTED)
+                elif self.is_sleeping:
+                    self.hud.set_state(MicState.SLEEPING)
+                else:
+                    self.hud.set_state(MicState.LISTENING)
                 continue
 
             if processed.intent == VoiceIntentType.SLEEP:

@@ -133,5 +133,29 @@ Démarrer la **Phase 2 (Shadow Buffer, Sélection Vocale sur place & Interface d
    - **7 tests sur 7 passés (`7 passed`)**, incluant la validation à **100 % sur les 12 enregistrements vocaux réels de l'utilisateur**.
 
 ### 3. Prochaine étape prévue (Phase 3 & Phase 4)
-1. Tester en direct la barre Phase 2 (avec démarrage `--mute` activable par `F8`).
+1. Tester en direct la barre Phase 2 enrichie (avec démarrage `--mute` activable par `F8`).
 2. **Phase 3 & 4** : Gestionnaire de vocabulaire personnel + importateur moderne de documents/e-mails + Pipeline de consolidation **Fine-Tuning LoRA local (DirectML)** sur les échantillons du Studio et des corrections validées + Gestionnaire de **Snapshots (Points de restauration)** du profil vocal.
+
+---
+
+## Session 4 — 10 Novembre 2026 : Aide Vocale Contextuelle, Correction Manuelle & Démarrage 100 % Hors-Ligne
+
+### 1. Objectif de la session
+Répondre à trois besoins prioritaires identifiés en test direct : (1) savoir quelles commandes vocales sont disponibles à tout moment, (2) pouvoir corriger manuellement (au clavier/souris) un segment et préparer la correction de parties de libellé, (3) garantir qu'aucune requête réseau n'est émise au démarrage.
+
+### 2. Travaux réalisés
+1. **Panneau « Que puis-je dire ? » (`src/phenix_voice/ui/hud.py`, `main.py`, `postprocess/punctuation.py`)** :
+   - Nouveau bouton **`[❓ Que puis-je dire ?]`** et commande vocale **« Que puis-je dire ? »** (avec variantes) affichant/masquant une aide contextuelle selon l'état : **Micro coupé**, **Veille**, **Écoute active** ou **Volet de correction ouvert**.
+   - Rappel explicite des commandes critiques (ex. **« Couper Phénix » / « Éteindre Phénix »**, **`F8` / `F9`**, **« Phénix écoute/repos »**, **« Corriger ça »**, **« Choisir un/deux/trois »**, **« Oups »**, **« Presser Entrée »**, ponctuation dictée).
+2. **Correction manuelle dans le volet de correction (`src/phenix_voice/ui/hud.py`, `main.py`)** :
+   - Ajout d'un champ texte éditable pré-rempli avec le segment à corriger + bouton **`[✅ Appliquer la correction]`** (activation temporaire du focus Win32 uniquement lors de l'édition manuelle pour ne pas voler le focus en dictée normale).
+   - Conservation de la re-dictée complète pendant correction ouverte et des alternatives 1/2/3, avec choix **« Corriger & Apprendre » / « SANS apprendre »**.
+3. **Démarrage 100 % hors-ligne (`src/phenix_voice/stt/engine.py`)** :
+   - Chargement des fichiers Whisper via cache local en priorité (`local_files_only=True` quand disponible) pour éviter toute requête réseau au démarrage (zéro octet réseau pendant la dictée, et plus de ping de vérification HuggingFace au lancement si le modèle est présent).
+4. **Cahier des charges (`docs/CAHIER_DES_CHARGES.md`)** :
+   - Ajout explicite de la future **correction/sélection sur textes longs** via *UI Automation (TextPattern/ValuePattern)* + historique multi-segments du *Shadow Buffer* (occurrences multiples à la Dragon), et politique de **mise à jour de modèle uniquement manuelle avec avertissement et sauvegarde anti-casse**.
+
+### 3. Prochaine étape prévue (Phase 3 & 4)
+1. Tester en direct l'aide « Que puis-je dire ? » et la correction manuelle dans le volet de correction.
+2. **Correction sur texte long (priorité fonctionnelle)** : étendre le *Shadow Buffer* à l'historique multi-segments et intégrer *UI Automation* pour sélectionner/corriger n'importe quel mot/expression dans un texte long (gestion des occurrences).
+3. **Phénix Studio & Apprentissage** : vocabulaire personnel, importateur documents/e-mails, snapshots de profil, et pipeline **Fine-Tuning LoRA local (DirectML)** sur échantillons validés.
