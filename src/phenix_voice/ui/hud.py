@@ -446,10 +446,15 @@ class PhenixHUD(QWidget):
     def show_help(self, help_text: str, visible: bool = True) -> None:
         self.signals.help_toggled.emit(help_text, visible)
 
+    def _shrink_to_content(self) -> None:
+        self.card.adjustSize()
+        self.adjustSize()
+        self.resize(self.width(), self.sizeHint().height())
+
     def _apply_help_slot(self, help_text: str, visible: bool) -> None:
         self.help_label.setText(help_text)
         self.help_frame.setVisible(visible)
-        self.adjustSize()
+        self._shrink_to_content()
 
     def _apply_state_slot(self, state_val: str) -> None:
         state = MicState(state_val)
@@ -501,17 +506,17 @@ class PhenixHUD(QWidget):
                 btn.setVisible(False)
 
         self.corr_frame.setVisible(True)
-        self.adjustSize()
+        self._shrink_to_content()
 
     def _apply_close_correction_slot(self) -> None:
         self.corr_frame.setVisible(False)
         self.correction_edit.clear()
         self._set_interactive_edit_mode(False)
-        self.adjustSize()
+        self._shrink_to_content()
 
     def _apply_correction_edit_text_slot(self, text: str) -> None:
         self.correction_edit.setText(text.strip())
-        self.adjustSize()
+        self._shrink_to_content()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

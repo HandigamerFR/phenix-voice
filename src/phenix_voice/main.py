@@ -12,8 +12,11 @@ import sys
 import threading
 import time
 import wave
+import ctypes
 import numpy as np
 from PySide6.QtWidgets import QApplication
+
+user32 = ctypes.WinDLL("user32", use_last_error=True)
 
 from phenix_voice.audio.capture import MicrophoneCapture
 from phenix_voice.audio.fingerprints import AcousticCommandProtector
@@ -55,6 +58,7 @@ class PhenixVoiceController:
         self._help_visible = False
         self._pending_correction_text = ""
         self._spelling_mode = False  # Mode épellation (alphabet radio international)
+        self._correction_target_hwnd: int = 0  # fenêtre cible à restaurer avant injection de correction manuelle
 
         self.shadow_buffer = ShadowBuffer()
         self.arbitrator = PlausibilityArbitrator(
@@ -172,6 +176,14 @@ class PhenixVoiceController:
         if last is None:
             self.hud.set_transcript("[Aucun segment récent à corriger]", 0.0)
             return
+        # Mémoriser la fenêtre cible (éditeur) pour pouvoir y réinjecter la correction même si le HUD prend le focus
+        try:
+            fg = int(user32.GetForegroundWindow() or 0)
+            hud_hwnd = int(self.hud.winId()) if self.hud is not None else 0
+            if fg and fg != hud_hwnd:
+                self._correction_target_hwnd = fg
+        except Exception:
+            pass
         self._correction_open = True
         self._learn_on_correction = True
         self._pending_correction_text = last.injected_text.strip()
@@ -293,7 +305,18 @@ class PhenixVoiceController:
             )
         return f"{state}<br><br>{cmds}"
 
+    def _restore_correction_target_focus(self) -> None:
+        hwnd = int(getattr(self, "_correction_target_hwnd", 0) or 0)
+        if hwnd:
+            try:
+                user32.SetForegroundWindow(hwnd)
+                time.sleep(0.03)
+            except Exception:
+                pass
+
     def _perform_replacement(self, new_text: str, learn: bool) -> None:
+        # Si l'utilisateur a édité manuellement dans le HUD, redonner le focus à la fenêtre cible avant d'envoyer Backspace/texte
+        self._restore_correction_target_focus()
         old_seg, new_seg = self.shadow_buffer.replace_last(
             new_text, discard_audio=not learn
         )
