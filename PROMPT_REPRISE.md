@@ -45,6 +45,21 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
   2. **Poursuivre le diagnostic ouvert** : segments non injectés (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052`) et `select_word not_found` (« ça corrigez ça »).
   3. **Correction sur textes longs** : historique multi-segments + UI Automation (TextPattern/ValuePattern), occurrences, réécoute audio en correction, plus d’alternatives (jusqu’à 9).
   4. **Studio / rollback explicite** : UI/commandes snapshots (profil initial, restauration par nom), purge/reset corrections/règles, puis pipeline LoRA local DirectML avec validation avant entraînement.
+### 4bis. Point de Reprise Exact (mis à jour EN COURS de tâche, pas seulement en fin de session)
+
+> **Protocole anti-interruption** : à chaque début de tâche, je mets à jour ce bloc (« en cours ») ;
+> à chaque jalon/jour, je commit+push. Si tu ouvres une session neuve, ce bloc + la dernière entrée
+> de `JOURNAL_DE_BORD.md` + `git status`/`git log --oneline -5` suffisent à reprendre sans mémoire.
+> Dans la même conversation, je reçois aussi l'historique (résumé de session) et je vois l'interruption.
+
+- **Dernier état stable** : `5ee51ac` poussé (correctif double chemin injection + `tools/injection_bench.py`). Arbre Git **propre**, tests `pytest` → 4 passed, app démarre (`--mute`), balayage des apps de test validé.
+- **Tâche EN COURS** : *(aucune — en attente du test utilisateur en direct)* → c'est le point de reprise.
+- **À faire ensuite, dans l'ordre** :
+  1. **Test utilisateur en direct** : dictée longue dans le Bloc-notes puis ailleurs ; corrections (« Corriger ça », choix 1/2/3, « C'était une commande »). Vérifier dans `logs/injection_trace.jsonl` : `send_path` = `messages` en Bloc-notes, `sendinput` ailleurs, et signaler tout `sendinput_fallback` (avec `messages_fallback_reason`).
+  2. **Anomalies ouvertes** : `dictation_empty` (segments reconnus non injectés : `seg_20261111_145733`, `_145914`, `_150052`) et `select_word not_found` (« ça corrigez ça »).
+  3. Correction sur textes longs (UI Automation + historique multi-segments) → Studio/rollback → LoRA.
+- **Pièges à connaître pour la reprise** : ne pas définir `PHENIX_INJECTION_PATH` en permanence (diagnostic uniquement) ; le banc `tools/injection_bench.py` ferme les applications de test en début/fin de série (Bloc-notes compris, en force) ; le Bloc-notes Win11 restaure sa session au lancement (le banc efface le document témoins de toute façon) ; lecture du texte reçu = presse-papier vidé avant chaque copie.
+
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :
 1. Ajouter le compte-rendu détaillé des travaux dans `JOURNAL_DE_BORD.md`.
