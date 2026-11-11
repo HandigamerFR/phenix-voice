@@ -205,3 +205,46 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 ### 3. Prochaine étape prévue
 1. Test utilisateur en direct des trois changements (ponctuation, épellation NATO en dictée/correction, « Annuler sans apprendre ») et ajustements éventuels de robustesse phonétique.
 2. Poursuivre la correction/sélection sur textes longs (historique multi-segments + UI Automation) puis Phénix Studio / pipeline LoRA avec snapshots.
+
+
+---
+
+## Session 7 — 11 Novembre 2026 : Traçage d'injection, racine de la corruption (Bloc-notes Win11) & correctif à double chemin
+
+### 1. Outils de diagnostic (commits `b184dfb`, `5844e19`, `1b07554`)
+1. **Traçage étendu** : `logs/session_trace.jsonl` + **`logs/injection_trace.jsonl`** (`InjectionTraceLogger`) journalisent désormais, avec `session_id`, horodaté mono-fenêtre et fenêtre cible : démar/fin de session, `engine_ready`, pipeline audio, état micro/sommeil (avec `source` hotkey/ui/voice), contexte curseur, commandes reconnues/exécutées, injections/remplacements/sélections (`events_requested/inserted`, `send_ok`, `batch_results`, dernier caractère), et **exceptions** (`where`, `error`, `traceback`).
+2. **Crash de démarrage corrigé** : ordre d'initialisation (`injection_logger`/`_session_id`/`trace_logger`/`snapshot_manager` avant `ShadowBuffer(action_logger=…)`).
+
+### 2. Racine de la corruption d'injection (régression « dernier caractère répété »)
+- **Symptôme** : longueur du texte toujours préservée, mais la queue est remplacée par la répétition du dernier caractère du lot (` ,`→`,,`, ` ont été`→`éééééééé`), plus des pertes ponctuelles.
+- **Écarter notre code** : contenu du tableau `SendInput` vérifié octet par octet (bon `wScan`, bons `dwFlags`) → **notre envoi est correct**.
+- **Banc d'essai** (`tools/injection_bench.py`) : injecte via le **code PRODUCTION** puis **relit** le texte reçu (presse-papier vidé avant chaque `Ctrl+A/Ctrl+C`), mêmes séquences sur **9 cibles** :
+  | Cible | Résultat (chemin production) |
+  |---|---|
+  | Widget tkinter | 24/24 |
+  | Contrôle d'édition Win32 natif | 36/36 |
+  | Notepad++ | 36/36 |
+  | LibreOffice Writer | conforme (seule l'autocorrection `'`→`’`/majuscule agit) |
+  | Microsoft Word | conforme (idem autocorrection) |
+  | Edge / Brave / Chrome | 18/18 chacun |
+  | **Bloc-notes Windows 11** | **~50 % corrompu** |
+- **Cadence innocentée** : respiration 5/20/200 ms, envoi caractère par caractère, appui/relâchement séparés → **aucune variante n'élimine le défaut** (le « par caractère » est même le pire).
+- **Cause racine** : **bug connu et documenté du pipeline d'entrée du Bloc-notes redessiné de Windows 11** (rapports AutoHotkey, Stack Overflow, microsoft/terminal : rafales `SendInput`/`VK_PACKET` figées ou mises en buffer, corrélation rapportée avec le correcteur orthographique du Bloc-notes). Bug système/application réceptrice : on ne le corrige pas, on le contourne proprement.
+
+### 3. Correctif implémenté — double chemin d'envoi automatique
+1. **`src/phenix_voice/os_control/injector.py`** : nouveau chemin **« messages »** :
+   - `send_text_via_messages()` : `WM_CHAR` envoyé par unité UTF-16 (paires de substituts pour les emojis hors-BMP) à la fenêtre focalisée (`GetGUIThreadInfo`), `WM_KEYDOWN/UP VK_RETURN` pour les sauts de ligne (`WM_CHAR '\r'` seul est ignoré par le Bloc-notes) ;
+   - `send_backspaces_via_messages()` : `WM_KEYDOWN/UP VK_BACK` (un `WM_CHAR '\b'` est ignoré) ;
+   - `choose_send_path()` : **`messages` si la classe de la fenêtre active est `Notepad`, sinon `sendinput`** ; surcharge pour diagnostic via variable d'environnement **`PHENIX_INJECTION_PATH`** (`sendinput` | `messages`).
+2. **`src/phenix_voice/os_control/shadow_buffer.py`** : `_send_text`, `_send_backspaces` et `press_enter_key` routent selon le chemin choisi, avec **repli automatique sur `SendInput`** si la fenêtre focalisée est indisponible ; stats enrichies de `send_path`, `target_class`, `focus_hwnd`, `messages_fallback_reason` → visibles dans `logs/injection_trace.jsonl`.
+3. **Validations** : Bloc-notes **12/12 puis 24/24** avec correctif (vs ~50 % avant), saut de ligne et emoji conformes ; corruption **reproduite à volonté** avec `PHENIX_INJECTION_PATH=sendinput` (preuve que la détection corrige) ; non-régression tkinter 24/24 et contrôle Win32 24/24 ; `pytest` → **4 passed, 3 deselected** ; démarrage réel de l'application (`--mute`, 30 s) OK ; trace d'injection écrite correctement.
+
+### 4. Banc versionné + nettoyage automatique (`tools/injection_bench.py`, `tools/bench_web.html`)
+- Modes : `tk`, `ed`, `np`, `fix` (variantes de cadence), `fix2` (variantes de chemin : `batch`/`wmchar`/`paste`/`wmkey`), `npp`/`nppw`, `lo`/`low`, `wordb`/`wordk`, `edge`/`chrome`/`brave`, `both` (défaut) + nombre d'itérations en 2e argument.
+- Garde-fous : aucune injection si la fenêtre témoin n'est pas au premier plan ; presse-papier vidé avant chaque copie (copie ratée = `SKIP`, pas de faux échec) ; fenêtre de test ciblée par différence avant/après lancement (pas de capture d'une fenêtre existante) ; fermeture de la fenêtre de test en fin de série.
+- **`sweep_test_apps()` en début ET fin de série** (demande utilisateur pour ne pas accumuler les processus) : fermeture des pages `PHENIX_WEB_TEMOIN` et `bench_npp.txt`, du Bloc-notes (douce puis `taskkill`), et des documents **sans titre** LibreOffice/Word — force uniquement si toutes les fenêtres de l'application sont des documents sans titre (aucun travail utilisateur).
+
+### 5. Prochaine étape prévue
+1. **Test utilisateur en direct** : dictée longue dans le Bloc-notes et dans d'autres applications, corrections (« Corriger ça », choix 1/2/3), « C'était une commande » ; vérifier `send_path` dans `logs/injection_trace.jsonl` (`messages` en Bloc-notes, `sendinput` ailleurs).
+2. Suites du diagnostic ouvertes : segments reconnus mais non injectés (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052`) et `select_word not_found` sur « ça corrigez ça ».
+3. Correction sur textes longs (UI Automation/TextPattern + historique multi-segments, jusqu'à 9 alternatives), outils de rollback/purge, puis pipeline LoRA local DirectML.

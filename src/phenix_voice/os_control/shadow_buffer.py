@@ -19,6 +19,11 @@ from phenix_voice.os_control.injector import (
     _make_unicode_events,
     _make_vk_events,
     _send_inputs,
+    choose_send_path,
+    get_window_class_name,
+    send_backspaces_via_messages,
+    send_text_via_messages,
+    user32 as _injector_user32,
 )
 
 VK_LEFT = 0x25
@@ -211,15 +216,13 @@ class ShadowBuffer:
         return True
 
     def press_enter_key(self) -> None:
-        """Envoie une pression franche sur la touche Entrée (`VK_RETURN`)."""
-        events = _make_vk_events(VK_RETURN)
-        inserted = _send_inputs(events)
-        self._log_action(
-            "press_enter",
-            events_requested=len(events),
-            events_inserted=inserted,
-            send_ok=(inserted == len(events)),
-        )
+        """Envoie une pression franche sur la touche Entrée (`VK_RETURN`).
+
+        Réutilise :meth:`_send_text` pour bénéficier du choix automatique de chemin
+        (Bloc-notes Win11 : VK_RETURN envoyé en messages, sinon SendInput).
+        """
+        _bs_count, send_stats = self._send_text("\n")
+        self._log_action("press_enter", **send_stats)
         self._segments.append(
             ShadowSegment(
                 injected_text="\n",
@@ -262,23 +265,55 @@ class ShadowBuffer:
 
     @classmethod
     def _send_text(cls, text: str) -> tuple[int, dict]:
+        # Nombre de retours arrière nécessaires pour annuler l'injection :
+        # chaque caractère non-\\r vaut 1 (le '\\n' est envoyé comme une seule Entrée).
+        bs_count = sum(1 for ch in text if ch != "\r")
+
+        path = choose_send_path()
+        target_hwnd = int(_injector_user32.GetForegroundWindow() or 0)
+        target_class = get_window_class_name(target_hwnd)
+
+        if path == "messages":
+            result = send_text_via_messages(text, target_hwnd)
+            if result.get("ok"):
+                msgs = int(result.get("message_count", 0))
+                send_stats: dict = {
+                    "events_requested": msgs,
+                    "events_inserted": msgs,
+                    "send_ok": True,
+                    "batch_count": 1,
+                    "batch_results": [[msgs, msgs]],
+                    "send_path": "messages",
+                    "target_class": target_class,
+                    "focus_hwnd": result.get("focus_hwnd"),
+                }
+                send_stats.update(cls._text_send_stats(text))
+                return bs_count, send_stats
+            # repli SendInput (fenêtre focalisée indisponible, etc.)
+            fallback_reason = result.get("reason")
+        else:
+            fallback_reason = None
+
         events: list[INPUT] = []
-        bs_count = 0
         for ch in text:
             if ch == "\r":
                 continue
             if ch == "\n":
                 events.extend(_make_vk_events(VK_RETURN))
-                bs_count += 1
             else:
                 raw = ch.encode("utf-16-le")
                 for i in range(0, len(raw), 2):
                     code_unit = int.from_bytes(raw[i : i + 2], byteorder="little")
                     events.extend(_make_unicode_events(code_unit))
-                bs_count += 1
 
         send_stats = cls._send_events_batched(events)
         send_stats.update(cls._text_send_stats(text))
+        send_stats["target_class"] = target_class
+        if path == "messages":
+            send_stats["send_path"] = "sendinput_fallback"
+            send_stats["messages_fallback_reason"] = fallback_reason
+        else:
+            send_stats["send_path"] = "sendinput"
         return bs_count, send_stats
 
     @classmethod
@@ -291,10 +326,41 @@ class ShadowBuffer:
                 "batch_count": 0,
                 "batch_results": [],
                 "backspace_count": count,
+                "send_path": "none",
             }
+
+        path = choose_send_path()
+        target_hwnd = int(_injector_user32.GetForegroundWindow() or 0)
+        target_class = get_window_class_name(target_hwnd)
+
+        if path == "messages":
+            result = send_backspaces_via_messages(count, target_hwnd)
+            if result.get("ok"):
+                msgs = int(result.get("message_count", 0))
+                return {
+                    "events_requested": msgs,
+                    "events_inserted": msgs,
+                    "send_ok": True,
+                    "batch_count": 1,
+                    "batch_results": [[msgs, msgs]],
+                    "backspace_count": count,
+                    "send_path": "messages",
+                    "target_class": target_class,
+                    "focus_hwnd": result.get("focus_hwnd"),
+                }
+            fallback_reason = result.get("reason")
+        else:
+            fallback_reason = None
+
         events: list[INPUT] = []
         for _ in range(count):
             events.extend(_make_vk_events(VK_BACK))
         send_stats = cls._send_events_batched(events)
         send_stats["backspace_count"] = count
+        send_stats["target_class"] = target_class
+        if path == "messages":
+            send_stats["send_path"] = "sendinput_fallback"
+            send_stats["messages_fallback_reason"] = fallback_reason
+        else:
+            send_stats["send_path"] = "sendinput"
         return send_stats
