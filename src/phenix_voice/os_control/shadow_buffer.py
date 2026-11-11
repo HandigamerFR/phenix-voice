@@ -49,11 +49,7 @@ class ShadowBuffer:
         return self._segments[-1] if self._segments else None
 
     def clear_context(self) -> None:
-        """Appelé lorsque l'utilisateur clique ailleurs à la souris ou déplace le curseur."""
-        # Invalider les segments précédents : on ne peut plus garantir que le curseur est
-        # immédiatement après le texte dicté, donc effacer/remplacer risquerait de détruire
-        # le mauvais texte dans l'éditeur.
-        self._segments.clear()
+        """Appelé lorsque l'utilisateur clique ailleurs à la souris."""
         self._active_selection_len = 0
 
     def inject_and_record(
@@ -161,12 +157,7 @@ class ShadowBuffer:
             events.extend(_make_vk_events(VK_LEFT))
         events.append(shift_up)
 
-        batch_size = 64
-        for idx in range(0, len(events), batch_size):
-            _send_inputs(events[idx : idx + batch_size])
-            if idx + batch_size < len(events):
-                import time as _t
-                _t.sleep(0.002)
+        _send_inputs(events)
         self._active_selection_len = word_len
         return True
 
@@ -201,21 +192,13 @@ class ShadowBuffer:
         batch_size = 64
         for idx in range(0, len(events), batch_size):
             _send_inputs(events[idx : idx + batch_size])
-            if idx + batch_size < len(events):
-                import time as _t
-                _t.sleep(0.002)
         return bs_count
 
     @staticmethod
     def _send_backspaces(count: int) -> None:
-        if count <= 0:
-            return
         events: list[INPUT] = []
         for _ in range(count):
             events.extend(_make_vk_events(VK_BACK))
         batch_size = 64
         for idx in range(0, len(events), batch_size):
             _send_inputs(events[idx : idx + batch_size])
-            if idx + batch_size < len(events):
-                import time as _t
-                _t.sleep(0.002)
