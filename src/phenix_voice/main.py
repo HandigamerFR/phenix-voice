@@ -68,6 +68,11 @@ class PhenixVoiceController:
         self._spelling_mode = False  # Mode épellation (alphabet radio international)
         self._correction_target_hwnd: int = 0  # fenêtre cible à restaurer avant injection de correction manuelle
 
+        self._session_id = time.strftime("session_%Y%m%d_%H%M%S")
+        self.trace_logger = SessionTraceLogger()
+        self.injection_logger = InjectionTraceLogger(session_id=self._session_id)
+        self.snapshot_manager = ProfileSnapshotManager()
+
         self.shadow_buffer = ShadowBuffer(action_logger=self.injection_logger.log_action)
         self.arbitrator = PlausibilityArbitrator(
             enable_strict_dictionary=strict_dictionary
@@ -77,10 +82,6 @@ class PhenixVoiceController:
         )
         self.protector = AcousticCommandProtector()
         self.engine: WhisperDirectMLEngine | None = None
-        self._session_id = time.strftime("session_%Y%m%d_%H%M%S")
-        self.trace_logger = SessionTraceLogger()
-        self.injection_logger = InjectionTraceLogger(session_id=self._session_id)
-        self.snapshot_manager = ProfileSnapshotManager()
 
         self._segment_queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=32)
 
