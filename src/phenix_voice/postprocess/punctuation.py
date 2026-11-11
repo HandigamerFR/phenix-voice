@@ -26,6 +26,7 @@ class VoiceIntentType(str, Enum):
     APPLY_CORRECTION = "apply_corr"  # « Valider la correction » (applique le texte du champ de correction)
     ENTER_SPELLING = "enter_spell"   # « Mode épellation » (alphabet radio international)
     EXIT_SPELLING = "exit_spell"     # « Fin épellation » / « Mode dictée »
+    REVISE_COMMAND = "revise_cmd"    # « C'était une commande » (annule le texte écrit à tort)
 
 
 @dataclass
@@ -57,6 +58,8 @@ SLEEP_COMMANDS: set[str] = {
     "phénix au repos",
     "phoenix au repos",
     "pause phénix",
+    "phénix, repos",
+    "phénix, au repos",
 }
 
 MUTE_COMMANDS: set[str] = {
@@ -148,6 +151,17 @@ OPEN_CORRECTION_COMMANDS: set[str] = {
     "corriger ça",
     "corrigez ça",
     "corrige ça",
+}
+
+COMMAND_RECALIBRATION_COMMANDS: dict[str, str] = {
+    "c'était une commande": "corriger ça",
+    "cetait une commande": "corriger ça",
+    "c'était la commande": "corriger ça",
+    "cetait la commande": "corriger ça",
+    "c'était un ordre": "corriger ça",
+    "cetait un ordre": "corriger ça",
+    "c'était une commande vocale": "corriger ça",
+    "cetait une commande vocale": "corriger ça",
 }
 
 PRESS_ENTER_COMMANDS: set[str] = {
@@ -479,6 +493,13 @@ class HybridPunctuationProcessor:
         if norm in SPELLING_ENTER_COMMANDS:
             return ProcessedUtterance(
                 intent=VoiceIntentType.ENTER_SPELLING, raw_text=raw_text, mapped_text=mapped
+            )
+        if norm in COMMAND_RECALIBRATION_COMMANDS:
+            return ProcessedUtterance(
+                intent=VoiceIntentType.REVISE_COMMAND,
+                raw_text=raw_text,
+                mapped_text=mapped,
+                target_arg=COMMAND_RECALIBRATION_COMMANDS[norm],
             )
 
         # 4. Commandes de correction, d'édition et de touche Entrée

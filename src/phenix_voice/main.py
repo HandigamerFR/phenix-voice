@@ -299,6 +299,7 @@ class PhenixVoiceController:
                 + "• <b>« Phénix repos »</b> : mettre en veille vocale (sans conflit avec Dragon)<br>"
                 "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
                 "• <b>« Corriger ça »</b> : ouvrir les alternatives (1/2/3) et la correction manuelle du dernier souffle<br>"
+                "• <b>« C'était une commande »</b> : si une commande a été écrite à tort comme du texte (ex. « Phénix repos »), efface le segment et ouvre la correction<br>"
                 "• <b>« Effacer ça »</b> : supprimer le dernier souffle<br>"
                 "• <b>« Annuler sans apprendre »</b> : effacer le dernier souffle SANS apprendre (bafouillage / fausse manip)<br>"
                 "• <b>« Presser Entrée »</b> : appuyer sur Entrée<br>"
@@ -540,6 +541,23 @@ class PhenixVoiceController:
                 self._close_correction_bar()
                 self.shadow_buffer.scratch_last(discard_audio=False)
                 self.hud.set_transcript("[Dernier souffle effacé]", result.total_ms)
+                self.hud.set_state(MicState.LISTENING)
+                continue
+
+            if processed.intent == VoiceIntentType.REVISE_COMMAND:
+                # « C'était une commande » : efface le texte dicté à tort et ouvre la correction sur le segment concerné
+                self._close_correction_bar()
+                erased = self.shadow_buffer.scratch_last(discard_audio=False)
+                self.hud.set_transcript(
+                    "[Commande reconnue à posteriori — segment effacé, corrigez ou validez la commande]",
+                    result.total_ms,
+                )
+                if erased is not None:
+                    self.hud.show_correction_panel(
+                        erased.raw_text,
+                        [],
+                        learn_enabled=self._learn_on_correction,
+                    )
                 self.hud.set_state(MicState.LISTENING)
                 continue
 
