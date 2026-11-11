@@ -35,14 +35,15 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 
 ### 4. État d'Avancement Actuel & Prochaine Tâche Immédiate
 - **Phases terminées** :
-  - [x] **Phase 0** : Cadrage, Cahier des charges, Architecture, Journal de bord, Prompt de reprise et création du dépôt GitHub privé `phenix-voice`.
-  - [x] **Phase 1** : Socle Audio (*Silero VAD* calibré, AGC), Moteur GPU AMD *Whisper Large-v3-Turbo FP16* optimisé, Studio d'étalonnage vocal, Empreintes acoustiques DTW, Dictée directe `SendInput` et barre *No-Focus* (`WS_EX_NOACTIVATE`).
-  - [x] **Phase 2 (+ itérations)** : *Shadow Buffer* (dernier segment), **Arbitre de Plausibilité Contextuelle & Acoustique**, Contrôle Micro 3 États sans conflit Dragon (`Phénix écoute`, `Phénix repos`, `Couper Phénix` + `F8`/`F9`), Correction Anti-Dérive (**« Corriger & Apprendre »** vs **« Annuler sans apprendre »**, validation explicite), **Aide « Que puis-je dire ? »**, correction manuelle, démarrage **100 % hors-ligne**, **ponctuation finale non forcée** (point/virgule auto retirés si non dictés), et **Mode épellation (alphabet radio NATO)**.
-- **Phase en cours** : **Phase 3 & 4 — Correction sur Texte Long, Vocabulaire, Fine-Tuning LoRA (AMD DirectML) & Snapshots**
-- **Prochaine tâche immédiate à réaliser** :
-  1. Valider en direct : ponctuation non forcée sur phrases inachevées, **Mode épellation** (`Mode épellation` / `Fin épellation`, Alpha Bravo Charlie…), nouvelle commande **« Annuler sans apprendre »** (remplace « Oups »), et flux de correction sécurisé.
-  2. Implémenter la **correction & sélection sur textes longs** : historique multi-segments du *Shadow Buffer* + lecture/sélection via *Windows UI Automation (TextPattern/ValuePattern)* avec gestion des occurrences multiples (« sélectionner/corriger [mot] », choix d'occurrence).
-  3. Construire **Phénix Studio** (vocabulaire, import `.mbox`/`.eml`/docs, **mises à jour de modèle manuelles avec avertissement + sauvegarde anti-casse**, snapshots/restauration profil, préparation **Fine-Tuning LoRA local** DirectML avec réversibilité).
+  - [x] **Phase 0** : Cadrage, docs, repo GitHub `phenix-voice`.
+  - [x] **Phase 1** : Audio/VAD+AGC, **Whisper Large-v3-Turbo FP16 DirectML (AMD RX 5700 XT, no CUDA)**, calibration/empreintes DTW, dictée directe `SendInput`, HUD *No-Focus*.
+  - [x] **Phase 2 (+ itérations)** : *Shadow Buffer* (dernier segment), arbitre de plausibilité, contrôle micro 3 états (`Phénix écoute/repos`, `Couper Phénix`, `F8/F9`), correction **Apprendre vs Annuler sans apprendre** avec validation explicite, aide « Que puis-je dire ? », correction manuelle, 100% offline (`local_files_only`), ponctuation finale auto non forcée (point/virgule), **mode épellation NATO** (+ `chiffre X` / `en lettres|mot X`), commande **« C’était une commande »** (annule segment écrit à tort), HUD garde correction ouverte en veille/mute et se redimensionne.
+- **Correctifs récents (à valider en test)** : champ correction éditable + sync texte + restauration focus cible avant remplacement ; fix double `?`/ponctuation dictée ; invalidation shadow buffer au déplacement curseur ; délais entre lots `SendInput` (effacement/remplacement multiples).
+- **Traçabilité & profil** : `logs/session_trace.jsonl` + audio `user_data/session_audio/seg_*.wav` (rotation 300) ; snapshots auto `user_data/snapshots/` (`demarrage`, `avant_correction`) via `src/phenix_voice/profile/snapshot.py`. **LoRA non actif** (pas de fine-tuning) : corrections = données WAV/log dans `user_data/corrections_learned/` (purge partielle faite, 2 conservées).
+- **Prochaine tâche immédiate** :
+  1. **Tester/fiabiliser correction & effacement** : application réelle dans l’éditeur, effacements successifs sans bouger curseur, cas ponctuation/commandes (« C’était une commande », épellation en correction). Si échec, s’appuyer sur `session_trace`.
+  2. **Correction sur textes longs** : historique multi-segments + UI Automation (TextPattern/ValuePattern), occurrences, réécoute audio en correction, plus d’alternatives (jusqu’à 9).
+  3. **Studio / rollback explicite** : UI/commandes snapshots (profil initial, restauration par nom), purge/reset corrections/règles, puis pipeline LoRA local DirectML avec validation avant entraînement.
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :
 1. Ajouter le compte-rendu détaillé des travaux dans `JOURNAL_DE_BORD.md`.
