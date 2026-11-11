@@ -15,9 +15,9 @@ class GlobalInputMonitor:
 
     def __init__(
         self,
-        on_toggle_mute: Callable[[], None],
-        on_toggle_sleep: Callable[[], None] | None = None,
-        on_cursor_moved: Callable[[], None] | None = None,
+        on_toggle_mute: Callable[..., None],
+        on_toggle_sleep: Callable[..., None] | None = None,
+        on_cursor_moved: Callable[..., None] | None = None,
         mute_key: keyboard.Key = keyboard.Key.f8,
         sleep_key: keyboard.Key = keyboard.Key.f9,
     ) -> None:
@@ -32,9 +32,15 @@ class GlobalInputMonitor:
 
     def _on_key_press(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
         if key == self.mute_key:
-            self.on_toggle_mute()
+            try:
+                self.on_toggle_mute(source="hotkey", key="F8")
+            except TypeError:
+                self.on_toggle_mute()
         elif key == self.sleep_key and self.on_toggle_sleep:
-            self.on_toggle_sleep()
+            try:
+                self.on_toggle_sleep(source="hotkey", key="F9")
+            except TypeError:
+                self.on_toggle_sleep()
         elif key in (
             keyboard.Key.enter,
             keyboard.Key.up,
@@ -45,13 +51,19 @@ class GlobalInputMonitor:
             keyboard.Key.end,
         ):
             if self.on_cursor_moved:
-                self.on_cursor_moved()
+                try:
+                    self.on_cursor_moved(source="hotkey_nav", key=str(key))
+                except TypeError:
+                    self.on_cursor_moved()
 
     def _on_mouse_click(
         self, x: int, y: int, button: mouse.Button, pressed: bool
     ) -> None:
         if pressed and self.on_cursor_moved:
-            self.on_cursor_moved()
+            try:
+                self.on_cursor_moved(source="mouse_click", button=str(button))
+            except TypeError:
+                self.on_cursor_moved()
 
     def start(self) -> None:
         if self._kb_listener is None:

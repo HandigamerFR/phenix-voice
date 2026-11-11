@@ -11,8 +11,10 @@ import queue
 import sys
 import threading
 import time
+import traceback
 import wave
 import ctypes
+from typing import Any
 import numpy as np
 from PySide6.QtWidgets import QApplication
 
@@ -115,16 +117,26 @@ class PhenixVoiceController:
     def start(self) -> None:
         self.hud.show()
         self.hud.set_state(MicState.LOADING)
+        self.injection_logger.log_action(
+            "session_start",
+            session_id=self._session_id,
+            model_repo=self.model_repo,
+            start_muted=self.is_muted,
+            start_sleeping=self.is_sleeping,
+            strict_dictionary=getattr(self.arbitrator, "enable_strict_dictionary", None),
+        )
         # Point de restauration initial du profil (avant toute nouvelle session)
         try:
             self.snapshot_manager.create_snapshot("demarrage")
-        except Exception:
-            pass
+            self.injection_logger.log_action("snapshot_created", label="demarrage")
+        except Exception as e:
+            self.injection_logger.log_action("snapshot_failed", label="demarrage", error=repr(e))
         self._stt_thread.start()
 
-    def _on_cursor_moved(self) -> None:
+    def _on_cursor_moved(self, source: str = "unknown", **details) -> None:
         self.processor.reset_context()
         self.shadow_buffer.clear_context()
+        self.injection_logger.log_action("cursor_context_cleared", source=source, **details)
 
     def _on_speech_state_change(self, speaking: bool) -> None:
         if self.engine is None or not self._running or self.is_muted or self.is_sleeping:
@@ -142,10 +154,21 @@ class PhenixVoiceController:
         except queue.Full:
             pass
 
-    def toggle_mute(self) -> None:
-        """Allume ou coupe totalement le micro (F8 ou bouton sur la barre)."""
+    def _normalize_source_arg(self, source_or_checked: Any = "ui") -> str:
+        # QPushButton.clicked(bool) passe False/True ; hotkeys peut passer "hotkey"
+        if isinstance(source_or_checked, bool):
+            return "ui"
+        if isinstance(source_or_checked, str):
+            return source_or_checked
+        return "ui"
+
+    def toggle_mute(self, source_or_checked: Any = "ui", **details) -> None:
+        """Allume ou coupe totalement le micro (F8, bouton HUD, ou autre)."""
+        source = self._normalize_source_arg(source_or_checked)
         if self.engine is None:
+            self.injection_logger.log_action("mic_toggle_ignored", source=source, reason="engine_not_ready", **details)
             return
+        prev_muted = self.is_muted
         self.is_muted = not self.is_muted
         if self.is_muted:
             self.capture.set_paused(True)
@@ -155,33 +178,63 @@ class PhenixVoiceController:
             self.capture.set_paused(False)
             self.processor.reset_context()
             self.hud.set_state(MicState.LISTENING)
+        self.injection_logger.log_action(
+            "mic_state_changed",
+            source=source,
+            previous_muted=prev_muted,
+            muted=self.is_muted,
+            sleeping=self.is_sleeping,
+            **details,
+        )
 
-    def mute_mic_completely(self) -> None:
-        """Coupe totalement le micro (appelé par la commande vocale « Couper Phénix »)."""
+    def mute_mic_completely(self, source: str = "voice") -> None:
+        """Coupe totalement le micro (ex. commande vocale « Couper Phénix »)."""
         if self.engine is None:
+            self.injection_logger.log_action("mic_mute_ignored", source=source, reason="engine_not_ready")
             return
+        prev_muted = self.is_muted
         self.is_muted = True
         self.capture.set_paused(True)
         self.hud.set_state(MicState.MUTED)
+        self.injection_logger.log_action(
+            "mic_state_changed",
+            source=source,
+            previous_muted=prev_muted,
+            muted=True,
+            sleeping=self.is_sleeping,
+            action="mute_completely",
+        )
 
-    def toggle_sleep(self) -> None:
+    def toggle_sleep(self, source_or_checked: Any = "ui", **details) -> None:
         """Bascule entre Écoute Active et Veille vocale (« Phénix repos » / F9)."""
+        source = self._normalize_source_arg(source_or_checked)
         if self.engine is None:
+            self.injection_logger.log_action("sleep_toggle_ignored", source=source, reason="engine_not_ready", **details)
             return
+        prev_sleeping = self.is_sleeping
+        prev_muted = self.is_muted
         if self.is_muted:
             # Si le micro était coupé, F9 le passe en veille vocale
             self.is_muted = False
             self.is_sleeping = True
             self.capture.set_paused(False)
             self.hud.set_state(MicState.SLEEPING)
-            return
-
-        self.is_sleeping = not self.is_sleeping
-        if self.is_sleeping:
-            self.hud.set_state(MicState.SLEEPING)
         else:
-            self.processor.reset_context()
-            self.hud.set_state(MicState.LISTENING)
+            self.is_sleeping = not self.is_sleeping
+            if self.is_sleeping:
+                self.hud.set_state(MicState.SLEEPING)
+            else:
+                self.processor.reset_context()
+                self.hud.set_state(MicState.LISTENING)
+        self.injection_logger.log_action(
+            "sleep_state_changed",
+            source=source,
+            previous_sleeping=prev_sleeping,
+            sleeping=self.is_sleeping,
+            previous_muted=prev_muted,
+            muted=self.is_muted,
+            **details,
+        )
 
     def open_correction_for_last(self) -> None:
         """Ouvre le volet de correction sur le dernier segment dicté."""
@@ -407,352 +460,408 @@ class PhenixVoiceController:
             pass
 
     def _stt_worker_loop(self) -> None:
-        self.engine = WhisperDirectMLEngine(repo_id=self.model_repo)
-        self.input_monitor.start()
-        self.capture.start()
+        try:
+            self.engine = WhisperDirectMLEngine(repo_id=self.model_repo)
+            self.injection_logger.log_action("engine_ready", model_repo=self.model_repo)
+            self.input_monitor.start()
+            self.capture.start()
+            self.injection_logger.log_action("audio_pipeline_started")
 
-        if self.is_muted:
-            self.capture.set_paused(True)
-            self.hud.set_state(MicState.MUTED)
-            self.hud.set_transcript(
-                "Micro coupé — Appuyez sur F8 ou dites « Que puis-je dire ? » (après réactivation) pour l'aide",
-                0.0,
+            if self.is_muted:
+                self.capture.set_paused(True)
+                self.hud.set_state(MicState.MUTED)
+                self.hud.set_transcript(
+                    "Micro coupé — Appuyez sur F8 ou dites « Que puis-je dire ? » (après réactivation) pour l'aide",
+                    0.0,
+                )
+                self.injection_logger.log_action("initial_state", muted=True, sleeping=False, spelling_mode=self._spelling_mode)
+            elif self.is_sleeping:
+                self.hud.set_state(MicState.SLEEPING)
+                self.injection_logger.log_action("initial_state", muted=False, sleeping=True, spelling_mode=self._spelling_mode)
+            else:
+                self.hud.set_state(MicState.LISTENING)
+                self.hud.set_transcript(
+                    "Prêt — Dites « Que puis-je dire ? » pour l'aide, « Mode épellation » pour épeler, ou « Couper Phénix »",
+                    0.0,
+                )
+                self.injection_logger.log_action("initial_state", muted=False, sleeping=False, spelling_mode=self._spelling_mode)
+        except Exception as e:
+            self.injection_logger.log_action(
+                "exception",
+                where="stt_worker_init",
+                error=repr(e),
+                traceback=traceback.format_exc(),
             )
-        elif self.is_sleeping:
-            self.hud.set_state(MicState.SLEEPING)
-        else:
-            self.hud.set_state(MicState.LISTENING)
-            self.hud.set_transcript(
-                "Prêt — Dites « Que puis-je dire ? » pour l'aide, « Mode épellation » pour épeler, ou « Couper Phénix »",
-                0.0,
-            )
+            return
 
         while self._running:
-            segment = self._segment_queue.get()
-            if segment is None or not self._running:
-                break
-            if self.is_muted:
-                continue
-
-            if not self.is_sleeping:
-                self.hud.set_state(MicState.TRANSCRIBING)
-
-            fp_match = self.protector.match_command(segment)
-            result = self.engine.transcribe(
-                segment, initial_prompt=self.initial_prompt
-            )
-
-            recent_ctx = (
-                self.shadow_buffer.last_segment.injected_text
-                if self.shadow_buffer.last_segment
-                else ""
-            )
-            arbitrated = self.arbitrator.arbitrate(
-                raw_text=result.text,
-                alternatives=result.alternatives,
-                acoustic_confidence=result.confidence,
-                audio_duration_s=result.audio_duration_s,
-                recent_context_text=recent_ctx,
-                acoustic_fp_match=fp_match,
-            )
-
-            if not arbitrated.best_text:
-                if not self.is_sleeping and not self.is_muted:
-                    self.hud.set_state(MicState.LISTENING)
-                continue
-
-            processed = self.processor.process(
-                arbitrated.best_text, is_sleeping=self.is_sleeping
-            )
-
-            # Journalisation diagnostique
             try:
-                log_dir = Path("logs")
-                log_dir.mkdir(parents=True, exist_ok=True)
-                with open(log_dir / "dictation_debug.jsonl", "a", encoding="utf-8") as lf:
-                    lf.write(
-                        json.dumps(
-                            {
-                                "ts": time.strftime("%H:%M:%S"),
-                                "dur_s": round(result.audio_duration_s, 2),
-                                "ms": round(result.total_ms, 0),
-                                "raw_stt": result.text,
-                                "arbitrated": arbitrated.best_text,
-                                "plaus": round(arbitrated.plausibility_score, 2),
-                                "conf": round(result.confidence, 2),
-                                "intent": processed.intent.value,
-                                "injected": processed.text_to_inject,
-                                "alts": arbitrated.ranked_alternatives[:3],
-                            },
-                            ensure_ascii=False,
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
+                segment = self._segment_queue.get()
+                if segment is None or not self._running:
+                    break
+                if self.is_muted:
+                    continue
 
-            # Trace de session avec audio (rotation bornée) pour savoir ce qui a été réellement dit
-            seg_ts = self.trace_logger.log(
-                audio_pcm=segment,
-                raw_stt=result.text,
-                arbitrated=arbitrated.best_text,
-                intent=processed.intent.value,
-                injected=processed.text_to_inject,
-                alternatives=arbitrated.ranked_alternatives,
-                extra={
-                    "dur_s": round(result.audio_duration_s, 2),
-                    "ms": round(result.total_ms, 0),
-                    "plaus": round(arbitrated.plausibility_score, 2),
-                    "conf": round(result.confidence, 2),
-                    "session_id": self._session_id,
-                },
-            )
-            seg_audio = f"user_data/session_audio/seg_{seg_ts}.wav" if seg_ts else None
-            self.injection_logger.set_segment_context(
-                segment_ts=seg_ts,
-                audio=seg_audio,
-                intent=processed.intent.value,
-                raw_stt=result.text,
-                arbitrated=arbitrated.best_text,
-            )
-            # Journal de session : trace des commandes reconnues (et intentions) pour diagnostic
-            if processed.intent != VoiceIntentType.DICTATION:
-                self.injection_logger.log_action(
-                    "command_recognized",
+                if not self.is_sleeping:
+                    self.hud.set_state(MicState.TRANSCRIBING)
+
+                fp_match = self.protector.match_command(segment)
+                result = self.engine.transcribe(
+                    segment, initial_prompt=self.initial_prompt
+                )
+
+                recent_ctx = (
+                    self.shadow_buffer.last_segment.injected_text
+                    if self.shadow_buffer.last_segment
+                    else ""
+                )
+                arbitrated = self.arbitrator.arbitrate(
+                    raw_text=result.text,
+                    alternatives=result.alternatives,
+                    acoustic_confidence=result.confidence,
+                    audio_duration_s=result.audio_duration_s,
+                    recent_context_text=recent_ctx,
+                    acoustic_fp_match=fp_match,
+                )
+
+                if not arbitrated.best_text:
+                    if not self.is_sleeping and not self.is_muted:
+                        self.hud.set_state(MicState.LISTENING)
+                    continue
+
+                processed = self.processor.process(
+                    arbitrated.best_text, is_sleeping=self.is_sleeping
+                )
+
+                # Journalisation diagnostique
+                try:
+                    log_dir = Path("logs")
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                    with open(log_dir / "dictation_debug.jsonl", "a", encoding="utf-8") as lf:
+                        lf.write(
+                            json.dumps(
+                                {
+                                    "ts": time.strftime("%H:%M:%S"),
+                                    "dur_s": round(result.audio_duration_s, 2),
+                                    "ms": round(result.total_ms, 0),
+                                    "raw_stt": result.text,
+                                    "arbitrated": arbitrated.best_text,
+                                    "plaus": round(arbitrated.plausibility_score, 2),
+                                    "conf": round(result.confidence, 2),
+                                    "intent": processed.intent.value,
+                                    "injected": processed.text_to_inject,
+                                    "alts": arbitrated.ranked_alternatives[:3],
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
+
+                # Trace de session avec audio (rotation bornée) pour savoir ce qui a été réellement dit
+                seg_ts = self.trace_logger.log(
+                    audio_pcm=segment,
+                    raw_stt=result.text,
+                    arbitrated=arbitrated.best_text,
+                    intent=processed.intent.value,
+                    injected=processed.text_to_inject,
+                    alternatives=arbitrated.ranked_alternatives,
+                    extra={
+                        "dur_s": round(result.audio_duration_s, 2),
+                        "ms": round(result.total_ms, 0),
+                        "plaus": round(arbitrated.plausibility_score, 2),
+                        "conf": round(result.confidence, 2),
+                        "session_id": self._session_id,
+                    },
+                )
+                seg_audio = f"user_data/session_audio/seg_{seg_ts}.wav" if seg_ts else None
+                self.injection_logger.set_segment_context(
+                    segment_ts=seg_ts,
+                    audio=seg_audio,
                     intent=processed.intent.value,
                     raw_stt=result.text,
                     arbitrated=arbitrated.best_text,
-                    text_to_inject=processed.text_to_inject,
-                    target_arg=getattr(processed, "target_arg", None),
-                    choice_index=getattr(processed, "choice_index", None),
                 )
-
-            # Routage des intentions
-            if processed.intent == VoiceIntentType.MUTE_MIC:
-                self.mute_mic_completely()
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, result="muted")
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.SHOW_HELP:
-                self.toggle_help()
-                if self.is_muted:
-                    self.hud.set_state(MicState.MUTED)
-                elif self.is_sleeping:
-                    self.hud.set_state(MicState.SLEEPING)
-                else:
-                    self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, help_visible=self._help_visible)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.ENTER_SPELLING:
-                self._spelling_mode = True
-                self.hud.set_transcript(
-                    "Mode épellation activé — dites Alpha, Bravo, Charlie… (« Fin épellation » pour quitter)",
-                    result.total_ms,
-                )
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, spelling_mode=True)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.EXIT_SPELLING:
-                self._spelling_mode = False
-                self.hud.set_transcript(
-                    "Mode épellation désactivé — retour à la dictée normale",
-                    result.total_ms,
-                )
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, spelling_mode=False)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.SLEEP:
-                self.is_sleeping = True
-                self._spelling_mode = False
-                self.hud.set_state(MicState.SLEEPING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, sleeping=True)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.WAKE:
-                self.is_sleeping = False
-                self.processor.reset_context()
-                self.hud.set_state(MicState.LISTENING)
-                self.hud.set_transcript(
-                    "Écoute reprise — Parlez librement", result.total_ms
-                )
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, sleeping=False)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.PRESS_ENTER:
-                self._close_correction_bar()
-                self.shadow_buffer.press_enter_key()
-                self.hud.set_transcript("[Touche Entrée ↵]", result.total_ms)
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.OUPS_NO_LEARN:
-                if self._correction_open:
-                    # Si le volet de correction est ouvert, « Annuler sans apprendre » le passe en mode SANS apprendre
-                    self._learn_on_correction = False
-                    last = self.shadow_buffer.last_segment
-                    if last:
-                        self.hud.show_correction_panel(
-                            last.injected_text,
-                            last.alternatives[:3],
-                            learn_enabled=False,
-                        )
-                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, mode="disable_learn_in_correction")
-                else:
-                    self.oups_scratch_without_learning()
-                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, mode="scratch_no_learn")
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.SCRATCH_LAST:
-                self._close_correction_bar()
-                self.shadow_buffer.scratch_last(discard_audio=False)
-                self.hud.set_transcript("[Dernier souffle effacé]", result.total_ms)
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.REVISE_COMMAND:
-                # « C'était une commande » : efface le texte dicté à tort et ouvre la correction sur le segment concerné
-                self._close_correction_bar()
-                erased = self.shadow_buffer.scratch_last(discard_audio=False)
-                self.hud.set_transcript(
-                    "[Commande reconnue à posteriori — segment effacé, corrigez ou validez la commande]",
-                    result.total_ms,
-                )
-                if erased is not None:
-                    self.hud.show_correction_panel(
-                        erased.raw_text,
-                        [],
-                        learn_enabled=self._learn_on_correction,
-                    )
-                self.injection_logger.log_action(
-                    "command_executed",
-                    intent=processed.intent.value,
-                    erased_text=(erased.injected_text if erased else None),
-                    erased_raw=(erased.raw_text if erased else None),
-                    result=("opened_correction" if erased else "no_segment"),
-                )
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.OPEN_CORRECTION:
-                if processed.target_arg:
-                    self.shadow_buffer.select_word_in_last_segments(processed.target_arg)
-                self.open_correction_for_last()
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, target_arg=processed.target_arg)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.CHOOSE_ALT:
-                self.apply_correction_choice(processed.choice_index)
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, choice_index=processed.choice_index)
-                self.injection_logger.clear_segment_context()
-                continue
-
-            if processed.intent == VoiceIntentType.APPLY_CORRECTION:
-                if self._correction_open:
-                    self.apply_pending_correction()
-                elif processed.text_to_inject:
-                    self.shadow_buffer.inject_and_record(
+                # Journal de session : trace des commandes reconnues (et intentions) pour diagnostic
+                if processed.intent != VoiceIntentType.DICTATION:
+                    self.injection_logger.log_action(
+                        "command_recognized",
+                        intent=processed.intent.value,
+                        raw_stt=result.text,
+                        arbitrated=arbitrated.best_text,
                         text_to_inject=processed.text_to_inject,
-                        raw_text=result.text,
-                        alternatives=arbitrated.ranked_alternatives[:3],
-                        audio_pcm=segment,
+                        target_arg=getattr(processed, "target_arg", None),
+                        choice_index=getattr(processed, "choice_index", None),
                     )
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, correction_open=self._correction_open)
-                self.injection_logger.clear_segment_context()
-                continue
 
-            if processed.intent == VoiceIntentType.SELECT_TARGET:
-                ok = self.shadow_buffer.select_word_in_last_segments(
-                    processed.target_arg
-                )
-                msg = (
-                    f"[Sélectionné : « {processed.target_arg} »]"
-                    if ok
-                    else f"[Mot introuvable : « {processed.target_arg} »]"
-                )
-                self.hud.set_transcript(msg, result.total_ms)
-                self.hud.set_state(MicState.LISTENING)
-                self.injection_logger.log_action("command_executed", intent=processed.intent.value, target_arg=processed.target_arg, found=ok)
-                self.injection_logger.clear_segment_context()
-                continue
+                # Routage des intentions
+                if processed.intent == VoiceIntentType.MUTE_MIC:
+                    self.mute_mic_completely()
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, result="muted")
+                    self.injection_logger.clear_segment_context()
+                    continue
 
-            # Dictée de texte : si le volet « Corriger ça » est ouvert, la nouvelle dictée est
-            # proposée dans le champ de correction SANS application automatique (anti-bafouillage / anti-coupure).
-            # L'utilisateur doit valider explicitement (bouton, « Valider la correction », ou choix 1/2/3).
-            if processed.intent == VoiceIntentType.DICTATION:
-                inject_text = processed.text_to_inject
-                # Mode épellation (alphabet radio) : convertir les mots NATO en lettres, sans ponctuation auto.
-                if self._spelling_mode:
-                    spelled = text_to_nato_spelling(result.text)
-                    inject_text = spelled
-                if inject_text:
-                    if self._correction_open:
-                        proposed = inject_text.lstrip(" ").strip()
-                        self._pending_correction_text = proposed
-                        self.hud.set_correction_edit_text(proposed)
-                        self.injection_logger.log_action(
-                            "dictation_proposed_to_correction",
-                            text=proposed,
-                            spelling_mode=self._spelling_mode,
-                            raw_stt=result.text,
-                        )
-                        mode_tag = " [Épellation]" if self._spelling_mode else ""
-                        self.hud.set_transcript(
-                            proposed,
-                            result.total_ms,
-                            f"[Proposition de correction{mode_tag} — cliquez « Appliquer » ou dites « Valider la correction »]",
-                        )
+                if processed.intent == VoiceIntentType.SHOW_HELP:
+                    self.toggle_help()
+                    if self.is_muted:
+                        self.hud.set_state(MicState.MUTED)
+                    elif self.is_sleeping:
+                        self.hud.set_state(MicState.SLEEPING)
                     else:
+                        self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, help_visible=self._help_visible)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.ENTER_SPELLING:
+                    self._spelling_mode = True
+                    self.hud.set_transcript(
+                        "Mode épellation activé — dites Alpha, Bravo, Charlie… (« Fin épellation » pour quitter)",
+                        result.total_ms,
+                    )
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, spelling_mode=True)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.EXIT_SPELLING:
+                    self._spelling_mode = False
+                    self.hud.set_transcript(
+                        "Mode épellation désactivé — retour à la dictée normale",
+                        result.total_ms,
+                    )
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, spelling_mode=False)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.SLEEP:
+                    prev_sleeping, prev_muted = self.is_sleeping, self.is_muted
+                    self.is_sleeping = True
+                    self._spelling_mode = False
+                    self.hud.set_state(MicState.SLEEPING)
+                    self.injection_logger.log_action(
+                        "sleep_state_changed",
+                        source="voice",
+                        previous_sleeping=prev_sleeping,
+                        sleeping=True,
+                        previous_muted=prev_muted,
+                        muted=self.is_muted,
+                    )
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, sleeping=True)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.WAKE:
+                    prev_sleeping, prev_muted = self.is_sleeping, self.is_muted
+                    self.is_sleeping = False
+                    self.processor.reset_context()
+                    self.hud.set_state(MicState.LISTENING)
+                    self.hud.set_transcript(
+                        "Écoute reprise — Parlez librement", result.total_ms
+                    )
+                    self.injection_logger.log_action(
+                        "sleep_state_changed",
+                        source="voice",
+                        previous_sleeping=prev_sleeping,
+                        sleeping=False,
+                        previous_muted=prev_muted,
+                        muted=self.is_muted,
+                    )
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, sleeping=False)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.PRESS_ENTER:
+                    self._close_correction_bar()
+                    self.shadow_buffer.press_enter_key()
+                    self.hud.set_transcript("[Touche Entrée ↵]", result.total_ms)
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.OUPS_NO_LEARN:
+                    if self._correction_open:
+                        # Si le volet de correction est ouvert, « Annuler sans apprendre » le passe en mode SANS apprendre
+                        self._learn_on_correction = False
+                        last = self.shadow_buffer.last_segment
+                        if last:
+                            self.hud.show_correction_panel(
+                                last.injected_text,
+                                last.alternatives[:3],
+                                learn_enabled=False,
+                            )
+                        self.injection_logger.log_action("command_executed", intent=processed.intent.value, mode="disable_learn_in_correction")
+                    else:
+                        self.oups_scratch_without_learning()
+                        self.injection_logger.log_action("command_executed", intent=processed.intent.value, mode="scratch_no_learn")
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.SCRATCH_LAST:
+                    self._close_correction_bar()
+                    self.shadow_buffer.scratch_last(discard_audio=False)
+                    self.hud.set_transcript("[Dernier souffle effacé]", result.total_ms)
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.REVISE_COMMAND:
+                    # « C'était une commande » : efface le texte dicté à tort et ouvre la correction sur le segment concerné
+                    self._close_correction_bar()
+                    erased = self.shadow_buffer.scratch_last(discard_audio=False)
+                    self.hud.set_transcript(
+                        "[Commande reconnue à posteriori — segment effacé, corrigez ou validez la commande]",
+                        result.total_ms,
+                    )
+                    if erased is not None:
+                        self.hud.show_correction_panel(
+                            erased.raw_text,
+                            [],
+                            learn_enabled=self._learn_on_correction,
+                        )
+                    self.injection_logger.log_action(
+                        "command_executed",
+                        intent=processed.intent.value,
+                        erased_text=(erased.injected_text if erased else None),
+                        erased_raw=(erased.raw_text if erased else None),
+                        result=("opened_correction" if erased else "no_segment"),
+                    )
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.OPEN_CORRECTION:
+                    if processed.target_arg:
+                        self.shadow_buffer.select_word_in_last_segments(processed.target_arg)
+                    self.open_correction_for_last()
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, target_arg=processed.target_arg)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.CHOOSE_ALT:
+                    self.apply_correction_choice(processed.choice_index)
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, choice_index=processed.choice_index)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.APPLY_CORRECTION:
+                    if self._correction_open:
+                        self.apply_pending_correction()
+                    elif processed.text_to_inject:
                         self.shadow_buffer.inject_and_record(
-                            text_to_inject=inject_text,
+                            text_to_inject=processed.text_to_inject,
                             raw_text=result.text,
                             alternatives=arbitrated.ranked_alternatives[:3],
                             audio_pcm=segment,
                         )
-                        alt_preview = (
-                            f"(Alt: {arbitrated.ranked_alternatives[0]})"
-                            if arbitrated.ranked_alternatives and not self._spelling_mode
-                            else ""
-                        )
-                        display_text = inject_text
-                        if self._spelling_mode:
-                            alt_preview = "[Épellation]"
-                        self.hud.set_transcript(
-                            display_text, result.total_ms, alt_preview
-                        )
-                else:
-                    self.injection_logger.log_action(
-                        "dictation_empty",
-                        spelling_mode=self._spelling_mode,
-                        raw_stt=result.text,
-                    )
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, correction_open=self._correction_open)
+                    self.injection_logger.clear_segment_context()
+                    continue
 
-            if not self.is_sleeping and not self.is_muted:
-                self.hud.set_state(MicState.LISTENING)
-            self.injection_logger.clear_segment_context()
+                if processed.intent == VoiceIntentType.SELECT_TARGET:
+                    ok = self.shadow_buffer.select_word_in_last_segments(
+                        processed.target_arg
+                    )
+                    msg = (
+                        f"[Sélectionné : « {processed.target_arg} »]"
+                        if ok
+                        else f"[Mot introuvable : « {processed.target_arg} »]"
+                    )
+                    self.hud.set_transcript(msg, result.total_ms)
+                    self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, target_arg=processed.target_arg, found=ok)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                # Dictée de texte : si le volet « Corriger ça » est ouvert, la nouvelle dictée est
+                # proposée dans le champ de correction SANS application automatique (anti-bafouillage / anti-coupure).
+                # L'utilisateur doit valider explicitement (bouton, « Valider la correction », ou choix 1/2/3).
+                if processed.intent == VoiceIntentType.DICTATION:
+                    inject_text = processed.text_to_inject
+                    # Mode épellation (alphabet radio) : convertir les mots NATO en lettres, sans ponctuation auto.
+                    if self._spelling_mode:
+                        spelled = text_to_nato_spelling(result.text)
+                        inject_text = spelled
+                    if inject_text:
+                        if self._correction_open:
+                            proposed = inject_text.lstrip(" ").strip()
+                            self._pending_correction_text = proposed
+                            self.hud.set_correction_edit_text(proposed)
+                            self.injection_logger.log_action(
+                                "dictation_proposed_to_correction",
+                                text=proposed,
+                                spelling_mode=self._spelling_mode,
+                                raw_stt=result.text,
+                            )
+                            mode_tag = " [Épellation]" if self._spelling_mode else ""
+                            self.hud.set_transcript(
+                                proposed,
+                                result.total_ms,
+                                f"[Proposition de correction{mode_tag} — cliquez « Appliquer » ou dites « Valider la correction »]",
+                            )
+                        else:
+                            self.shadow_buffer.inject_and_record(
+                                text_to_inject=inject_text,
+                                raw_text=result.text,
+                                alternatives=arbitrated.ranked_alternatives[:3],
+                                audio_pcm=segment,
+                            )
+                            alt_preview = (
+                                f"(Alt: {arbitrated.ranked_alternatives[0]})"
+                                if arbitrated.ranked_alternatives and not self._spelling_mode
+                                else ""
+                            )
+                            display_text = inject_text
+                            if self._spelling_mode:
+                                alt_preview = "[Épellation]"
+                            self.hud.set_transcript(
+                                display_text, result.total_ms, alt_preview
+                            )
+                    else:
+                        self.injection_logger.log_action(
+                            "dictation_empty",
+                            spelling_mode=self._spelling_mode,
+                            raw_stt=result.text,
+                        )
+
+                    if not self.is_sleeping and not self.is_muted:
+                        self.hud.set_state(MicState.LISTENING)
+                    self.injection_logger.clear_segment_context()
+            except Exception as e:
+                self.injection_logger.log_action(
+                    "exception",
+                    where="stt_worker_loop",
+                    error=repr(e),
+                    traceback=traceback.format_exc(),
+                )
+                try:
+                    self.injection_logger.clear_segment_context()
+                except Exception:
+                    pass
+                try:
+                    if not self.is_sleeping and not self.is_muted:
+                        self.hud.set_state(MicState.LISTENING)
+                except Exception:
+                    pass
 
     def shutdown(self) -> None:
         if not self._running:
             return
+        self.injection_logger.log_action(
+            "session_end",
+            reason="shutdown",
+            muted=self.is_muted,
+            sleeping=self.is_sleeping,
+            spelling_mode=self._spelling_mode,
+        )
         self._running = False
         try:
             self._segment_queue.put_nowait(None)
