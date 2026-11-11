@@ -161,7 +161,12 @@ class ShadowBuffer:
             events.extend(_make_vk_events(VK_LEFT))
         events.append(shift_up)
 
-        _send_inputs(events)
+        batch_size = 64
+        for idx in range(0, len(events), batch_size):
+            _send_inputs(events[idx : idx + batch_size])
+            if idx + batch_size < len(events):
+                import time as _t
+                _t.sleep(0.002)
         self._active_selection_len = word_len
         return True
 
@@ -196,13 +201,21 @@ class ShadowBuffer:
         batch_size = 64
         for idx in range(0, len(events), batch_size):
             _send_inputs(events[idx : idx + batch_size])
+            if idx + batch_size < len(events):
+                import time as _t
+                _t.sleep(0.002)
         return bs_count
 
     @staticmethod
     def _send_backspaces(count: int) -> None:
+        if count <= 0:
+            return
         events: list[INPUT] = []
         for _ in range(count):
             events.extend(_make_vk_events(VK_BACK))
         batch_size = 64
         for idx in range(0, len(events), batch_size):
             _send_inputs(events[idx : idx + batch_size])
+            if idx + batch_size < len(events):
+                import time as _t
+                _t.sleep(0.002)
