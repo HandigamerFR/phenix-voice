@@ -103,6 +103,7 @@ class PhenixHUD(QWidget):
         on_apply_manual_correction: Callable[[str], None],
         on_toggle_help: Callable[[], None],
         on_quit: Callable[[], None],
+        on_correction_text_changed: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.on_toggle_mute = on_toggle_mute
@@ -114,6 +115,8 @@ class PhenixHUD(QWidget):
         self.on_apply_manual_correction = on_apply_manual_correction
         self.on_toggle_help = on_toggle_help
         self.on_quit = on_quit
+        self.on_correction_text_changed = on_correction_text_changed
+        self._programmatic_edit = False
         self._drag_offset: QPoint | None = None
         self._is_noactivate = True
 
@@ -380,6 +383,7 @@ class PhenixHUD(QWidget):
         self.correction_edit.setPlaceholderText("Modifiez ici le texte à corriger...")
         self.correction_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.correction_edit.installEventFilter(self)
+        self.correction_edit.textChanged.connect(self._on_correction_text_changed)
         manual_row.addWidget(self.correction_edit, stretch=1)
 
         self.apply_edit_btn = QPushButton("✅ Appliquer la correction")
@@ -423,6 +427,12 @@ class PhenixHUD(QWidget):
                 if self._is_noactivate:
                     self._set_interactive_edit_mode(True)
         return super().eventFilter(obj, event)
+
+    def _on_correction_text_changed(self, text: str) -> None:
+        if self._programmatic_edit:
+            return
+        if self.on_correction_text_changed:
+            self.on_correction_text_changed(text)
 
     def _on_apply_manual_clicked(self) -> None:
         text = self.correction_edit.text().strip()
@@ -505,7 +515,11 @@ class PhenixHUD(QWidget):
         self.corr_title_label.setText(
             f"✏️ Corriger « {clean_target} » — choisissez 1/2/3, modifiez à la main, ou re-dictez :"
         )
-        self.correction_edit.setText(clean_target)
+        self._programmatic_edit = True
+        try:
+            self.correction_edit.setText(clean_target)
+        finally:
+            self._programmatic_edit = False
         if learn_enabled:
             self.learn_mode_btn.setText("🧠 Mode : Corriger & Apprendre")
             self.learn_mode_btn.setStyleSheet(
@@ -534,7 +548,11 @@ class PhenixHUD(QWidget):
         self._shrink_to_content()
 
     def _apply_correction_edit_text_slot(self, text: str) -> None:
-        self.correction_edit.setText(text.strip())
+        self._programmatic_edit = True
+        try:
+            self.correction_edit.setText(text.strip())
+        finally:
+            self._programmatic_edit = False
         self._shrink_to_content()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:

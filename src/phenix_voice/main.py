@@ -86,6 +86,7 @@ class PhenixVoiceController:
             on_apply_manual_correction=self.apply_manual_correction,
             on_toggle_help=self.toggle_help,
             on_quit=self.shutdown,
+            on_correction_text_changed=self.set_pending_correction_text,
         )
 
         self.segmenter = BreathSegmenter(
@@ -221,6 +222,10 @@ class PhenixVoiceController:
         replacement = last.alternatives[idx]
         self._perform_replacement(replacement, learn=self._learn_on_correction)
 
+    def set_pending_correction_text(self, new_text: str) -> None:
+        if self._correction_open:
+            self._pending_correction_text = new_text.strip()
+
     def apply_manual_correction(self, new_text: str) -> None:
         """Applique la correction saisie manuellement dans le champ du volet de correction."""
         cleaned = new_text.strip()
@@ -321,8 +326,11 @@ class PhenixVoiceController:
         hwnd = int(getattr(self, "_correction_target_hwnd", 0) or 0)
         if hwnd:
             try:
-                user32.SetForegroundWindow(hwnd)
-                time.sleep(0.03)
+                for _ in range(3):
+                    user32.SetForegroundWindow(hwnd)
+                    time.sleep(0.04)
+                    if int(user32.GetForegroundWindow() or 0) == hwnd:
+                        break
             except Exception:
                 pass
 
