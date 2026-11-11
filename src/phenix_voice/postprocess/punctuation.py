@@ -195,7 +195,7 @@ SPOKEN_PUNCTUATION_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r",?\s*\b(?:retour\s+)?à\s+la\s+ligne\b[.!?]*", re.IGNORECASE), "\n"),
     (
         re.compile(
-            r"[,.?]?\s*\b(?:point|pour|pas)\s+(?:d['’]|l['’]|à['’]?)interrogation\b[.!?]*",
+            r"[,.?]?\s*\b(?:point|pour|pas)\s+(?:d['’]?|l['’]?|à['’]?)\s*interrogation\b[.!?]*",
             re.IGNORECASE,
         ),
         " ?",
@@ -306,8 +306,11 @@ def _ends_with_explicit_spoken_punctuation(norm_text: str) -> bool:
     n = norm_text.strip()
     if not n:
         return False
+    # Normaliser apostrophes et espaces pour la détection (ex. « l'interrogation » / « linterrogation »)
+    n = n.replace("’", "'").replace("'", " ").replace("  ", " ").strip()
     for ending in EXPLICIT_SPOKEN_PUNCT_ENDINGS:
-        if n == ending or n.endswith(" " + ending) or n.endswith(ending):
+        e = ending.replace("’", "'").replace("'", " ").replace("  ", " ").strip()
+        if n == e or n.endswith(" " + e) or n.endswith(e):
             return True
     return False
 
@@ -542,6 +545,11 @@ class HybridPunctuationProcessor:
         # 5. Mise en forme du texte dicté et ponctuation hybride
         explicit_spoken_punct = _ends_with_explicit_spoken_punctuation(norm)
         text = mapped.strip()
+        # Retirer la ponctuation terminale auto-ajoutée par Whisper pour éviter les doublons
+        # (log réel : « Comment vas-tu pour l'interrogation ? » injectait « Comment vas-tu ? ? »).
+        # On conserve la forme dictée dans une variable d'entrée pour les règles de ponctuation.
+        text_for_rules = re.sub(r"[ \t]*[.!?,;:»…]+[ \t]*$", "", text)
+        text = text_for_rules
         for pattern, replacement in SPOKEN_PUNCTUATION_RULES:
             text = pattern.sub(replacement, text)
 

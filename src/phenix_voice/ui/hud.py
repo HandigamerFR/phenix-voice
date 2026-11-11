@@ -163,9 +163,23 @@ class PhenixHUD(QWidget):
         """Autorise temporairement le focus clavier pour saisir une correction manuelle à la souris."""
         self._is_noactivate = not enabled
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not enabled)
+        # Retirer WindowDoesNotAcceptFocus pour que le QLineEdit reçoive le focus clavier
+        flags = self.windowFlags()
+        if enabled:
+            flags = flags & ~Qt.WindowType.WindowDoesNotAcceptFocus
+        else:
+            flags = flags | Qt.WindowType.WindowDoesNotAcceptFocus
+        self.setWindowFlags(
+            flags
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self._enforce_win32_noactivate()
+        self.show()
         if enabled:
             self.activateWindow()
+            self.correction_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             self.correction_edit.setFocus()
             self.correction_edit.selectAll()
 
@@ -364,6 +378,7 @@ class PhenixHUD(QWidget):
         self.correction_edit = QLineEdit()
         self.correction_edit.setObjectName("corrEdit")
         self.correction_edit.setPlaceholderText("Modifiez ici le texte à corriger...")
+        self.correction_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.correction_edit.installEventFilter(self)
         manual_row.addWidget(self.correction_edit, stretch=1)
 
