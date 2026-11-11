@@ -76,13 +76,13 @@ class ShadowBuffer:
         if not text_to_inject:
             return None
 
-        bs_count = self._send_text(text_to_inject)
+        bs_count, send_stats = self._send_text(text_to_inject)
         self._log_action(
             "inject_text",
             text=text_to_inject,
             raw_text=raw_text,
             backspace_equiv=bs_count,
-            char_count=len(text_to_inject),
+            **send_stats,
         )
         seg = ShadowSegment(
             injected_text=text_to_inject,
@@ -101,14 +101,13 @@ class ShadowBuffer:
             self._log_action("scratch_last", result="no_segment")
             return None
         seg = self._segments.pop()
-        if seg.backspace_count > 0:
-            self._send_backspaces(seg.backspace_count)
+        bs_stats = self._send_backspaces(seg.backspace_count) if seg.backspace_count > 0 else self._send_backspaces(0)
         self._log_action(
             "scratch_last",
             result="erased",
-            backspace_count=seg.backspace_count,
             erased_text=seg.injected_text,
             discard_audio=discard_audio,
+            **bs_stats,
         )
         if discard_audio:
             seg.audio_pcm = None
@@ -129,12 +128,11 @@ class ShadowBuffer:
             return None, new_seg
 
         old_seg = self._segments.pop()
-        if old_seg.backspace_count > 0:
-            self._send_backspaces(old_seg.backspace_count)
+        bs_stats = self._send_backspaces(old_seg.backspace_count) if old_seg.backspace_count > 0 else self._send_backspaces(0)
         self._log_action(
             "replace_last_backspace",
-            backspace_count=old_seg.backspace_count,
             erased_text=old_seg.injected_text,
+            **bs_stats,
         )
 
         # Préserver l'espace initial si l'ancien segment commençait par une espace
@@ -146,13 +144,13 @@ class ShadowBuffer:
         ):
             formatted_new = " " + formatted_new
 
-        new_bs = self._send_text(formatted_new)
+        new_bs, send_stats = self._send_text(formatted_new)
         self._log_action(
             "replace_last_inject",
             text=formatted_new,
             raw_text=new_text,
             backspace_equiv=new_bs,
-            char_count=len(formatted_new),
+            **send_stats,
         )
         new_seg = ShadowSegment(
             injected_text=formatted_new,
@@ -200,7 +198,7 @@ class ShadowBuffer:
             events.extend(_make_vk_events(VK_LEFT))
         events.append(shift_up)
 
-        _send_inputs(events)
+        send_stats = self._send_events_batched(events)
         self._active_selection_len = word_len
         self._log_action(
             "select_word",
@@ -208,13 +206,20 @@ class ShadowBuffer:
             result="ok",
             left_moves_to_end=chars_from_end_to_word_end,
             shift_left_count=word_len,
+            **send_stats,
         )
         return True
 
     def press_enter_key(self) -> None:
         """Envoie une pression franche sur la touche Entrée (`VK_RETURN`)."""
-        _send_inputs(_make_vk_events(VK_RETURN))
-        self._log_action("press_enter")
+        events = _make_vk_events(VK_RETURN)
+        inserted = _send_inputs(events)
+        self._log_action(
+            "press_enter",
+            events_requested=len(events),
+            events_inserted=inserted,
+            send_ok=(inserted == len(events)),
+        )
         self._segments.append(
             ShadowSegment(
                 injected_text="\n",
@@ -224,7 +229,39 @@ class ShadowBuffer:
         )
 
     @staticmethod
-    def _send_text(text: str) -> int:
+    def _send_events_batched(events: list[INPUT], batch_size: int = 64) -> dict:
+        requested = len(events)
+        inserted_total = 0
+        batches: list[list[int]] = []
+        for idx in range(0, len(events), batch_size):
+            batch = events[idx : idx + batch_size]
+            inserted = _send_inputs(batch)
+            inserted_total += inserted
+            batches.append([len(batch), inserted])
+        return {
+            "events_requested": requested,
+            "events_inserted": inserted_total,
+            "send_ok": inserted_total == requested,
+            "batch_count": len(batches),
+            "batch_results": batches if len(batches) != 1 else batches,  # compact: keep always for diagnosis
+        }
+
+    @staticmethod
+    def _text_send_stats(text: str) -> dict:
+        stats: dict = {"char_count": len(text), "newline_count": text.count("\n")}
+        if not text:
+            return stats
+        last = text[-1]
+        stats["last_char"] = last
+        stats["last_char_codepoint"] = f"U+{ord(last):04X}"
+        try:
+            stats["last_char_utf16_units"] = len(last.encode("utf-16-le")) // 2
+        except Exception:
+            pass
+        return stats
+
+    @classmethod
+    def _send_text(cls, text: str) -> tuple[int, dict]:
         events: list[INPUT] = []
         bs_count = 0
         for ch in text:
@@ -240,16 +277,24 @@ class ShadowBuffer:
                     events.extend(_make_unicode_events(code_unit))
                 bs_count += 1
 
-        batch_size = 64
-        for idx in range(0, len(events), batch_size):
-            _send_inputs(events[idx : idx + batch_size])
-        return bs_count
+        send_stats = cls._send_events_batched(events)
+        send_stats.update(cls._text_send_stats(text))
+        return bs_count, send_stats
 
-    @staticmethod
-    def _send_backspaces(count: int) -> None:
+    @classmethod
+    def _send_backspaces(cls, count: int) -> dict:
+        if count <= 0:
+            return {
+                "events_requested": 0,
+                "events_inserted": 0,
+                "send_ok": True,
+                "batch_count": 0,
+                "batch_results": [],
+                "backspace_count": count,
+            }
         events: list[INPUT] = []
         for _ in range(count):
             events.extend(_make_vk_events(VK_BACK))
-        batch_size = 64
-        for idx in range(0, len(events), batch_size):
-            _send_inputs(events[idx : idx + batch_size])
+        send_stats = cls._send_events_batched(events)
+        send_stats["backspace_count"] = count
+        return send_stats
