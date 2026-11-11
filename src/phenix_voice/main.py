@@ -18,6 +18,8 @@ from PySide6.QtWidgets import QApplication
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 
+from phenix_voice.profile.snapshot import ProfileSnapshotManager, SessionTraceLogger
+
 from phenix_voice.audio.capture import MicrophoneCapture
 from phenix_voice.audio.fingerprints import AcousticCommandProtector
 from phenix_voice.audio.vad import BreathSegmenter
@@ -69,6 +71,8 @@ class PhenixVoiceController:
         )
         self.protector = AcousticCommandProtector()
         self.engine: WhisperDirectMLEngine | None = None
+        self.trace_logger = SessionTraceLogger()
+        self.snapshot_manager = ProfileSnapshotManager()
 
         self._segment_queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=32)
 
@@ -104,6 +108,11 @@ class PhenixVoiceController:
     def start(self) -> None:
         self.hud.show()
         self.hud.set_state(MicState.LOADING)
+        # Point de restauration initial du profil (avant toute nouvelle session)
+        try:
+            self.snapshot_manager.create_snapshot("demarrage")
+        except Exception:
+            pass
         self._stt_thread.start()
 
     def _on_cursor_moved(self) -> None:
@@ -325,6 +334,8 @@ class PhenixVoiceController:
         )
         self._close_correction_bar()
         if old_seg is not None and learn and old_seg.audio_pcm is not None:
+            # Snapshot de sécurité avant d'apprendre une correction (anti-dérive / rollback)
+            self.snapshot_manager.create_snapshot("avant_correction")
             self._save_learned_correction_sample(
                 old_seg.audio_pcm, old_seg.raw_text, new_text
             )
@@ -465,6 +476,22 @@ class PhenixVoiceController:
                     )
             except Exception:
                 pass
+
+            # Trace de session avec audio (rotation bornée) pour savoir ce qui a été réellement dit
+            self.trace_logger.log(
+                audio_pcm=segment,
+                raw_stt=result.text,
+                arbitrated=arbitrated.best_text,
+                intent=processed.intent.value,
+                injected=processed.text_to_inject,
+                alternatives=arbitrated.ranked_alternatives,
+                extra={
+                    "dur_s": round(result.audio_duration_s, 2),
+                    "ms": round(result.total_ms, 0),
+                    "plaus": round(arbitrated.plausibility_score, 2),
+                    "conf": round(result.confidence, 2),
+                },
+            )
 
             # Routage des intentions
             if processed.intent == VoiceIntentType.MUTE_MIC:
