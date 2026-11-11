@@ -3,12 +3,15 @@
 Objectifs :
 - Garder une trace des dictées (audio + texte reconnu/injecté) pour le développement,
   avec une rotation bornée pour ne pas saturer le disque.
+- Journaliser les actions d'injection/frappes (par action) et les commandes reconnues
+  pour diagnostiquer les écarts entre audio, reconnaissance et texte réellement envoyé.
 - Permettre la sauvegarde et la restauration du profil vocal (règles apprises,
   corrections apprises, calibration) avant/après des opérations sensibles.
 """
 
 from __future__ import annotations
 
+import ctypes
 import json
 import shutil
 import time
@@ -17,6 +20,11 @@ from pathlib import Path
 
 import numpy as np
 import wave
+
+try:
+    _user32 = ctypes.WinDLL("user32", use_last_error=True)
+except Exception:
+    _user32 = None
 
 
 @dataclass
@@ -139,7 +147,7 @@ class SessionTraceLogger:
         injected: str,
         alternatives: list[str] | None = None,
         extra: dict | None = None,
-    ) -> None:
+    ) -> str | None:
         try:
             self.audio_dir.mkdir(parents=True, exist_ok=True)
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -170,8 +178,9 @@ class SessionTraceLogger:
                 record.update(extra)
             with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            return ts
         except Exception:
-            pass
+            return None
 
     def _prune_audio(self) -> None:
         try:
@@ -185,5 +194,74 @@ class SessionTraceLogger:
                     p.unlink()
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+
+def _get_foreground_window_info() -> tuple[int, str]:
+    if _user32 is None:
+        return 0, ""
+    try:
+        hwnd = int(_user32.GetForegroundWindow() or 0)
+        if not hwnd:
+            return 0, ""
+        buf = ctypes.create_unicode_buffer(512)
+        _user32.GetWindowTextW(hwnd, buf, 512)
+        return hwnd, (buf.value or "").strip()
+    except Exception:
+        return 0, ""
+
+
+class InjectionTraceLogger:
+    """Journal de session des actions d'injection/frappes (par action) et des commandes reconnues."""
+
+    def __init__(
+        self,
+        log_path: str | Path = "logs/injection_trace.jsonl",
+        session_id: str | None = None,
+    ) -> None:
+        self.log_path = Path(log_path)
+        self.session_id = session_id or time.strftime("session_%Y%m%d_%H%M%S")
+        self._current_segment: dict | None = None
+
+    def set_segment_context(
+        self,
+        segment_ts: str | None = None,
+        audio: str | None = None,
+        intent: str | None = None,
+        raw_stt: str | None = None,
+        arbitrated: str | None = None,
+    ) -> None:
+        self._current_segment = {
+            "segment_ts": segment_ts,
+            "audio": audio,
+            "intent": intent,
+            "raw_stt": raw_stt,
+            "arbitrated": arbitrated,
+        }
+
+    def clear_segment_context(self) -> None:
+        self._current_segment = None
+
+    def log_action(self, action: str, **details) -> None:
+        try:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            hwnd, title = _get_foreground_window_info()
+            record = {
+                "ts": time.strftime("%Y%m%d_%H%M%S"),
+                "clock": time.strftime("%H:%M:%S"),
+                "mono": round(time.monotonic(), 6),
+                "session_id": self.session_id,
+                "action": action,
+                "target_hwnd": hwnd,
+                "target_window": title[:200],
+            }
+            if self._current_segment:
+                record.update({k: v for k, v in self._current_segment.items() if v is not None})
+            for k, v in details.items():
+                if v is not None:
+                    record[k] = v
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except Exception:
             pass

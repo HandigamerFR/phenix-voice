@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from typing import Any, Callable
 import numpy as np
 
 from phenix_voice.os_control.injector import (
@@ -40,9 +41,21 @@ class ShadowSegment:
 class ShadowBuffer:
     """Conserve en mémoire vive les derniers souffles dictés avec leurs alternatives et leur audio."""
 
-    def __init__(self, max_segments: int = 25) -> None:
+    def __init__(
+        self,
+        max_segments: int = 25,
+        action_logger: Callable[..., Any] | None = None,
+    ) -> None:
         self._segments: deque[ShadowSegment] = deque(maxlen=max_segments)
         self._active_selection_len: int = 0
+        self._action_logger = action_logger
+
+    def _log_action(self, action: str, **details) -> None:
+        if self._action_logger:
+            try:
+                self._action_logger(action, **details)
+            except Exception:
+                pass
 
     @property
     def last_segment(self) -> ShadowSegment | None:
@@ -64,6 +77,13 @@ class ShadowBuffer:
             return None
 
         bs_count = self._send_text(text_to_inject)
+        self._log_action(
+            "inject_text",
+            text=text_to_inject,
+            raw_text=raw_text,
+            backspace_equiv=bs_count,
+            char_count=len(text_to_inject),
+        )
         seg = ShadowSegment(
             injected_text=text_to_inject,
             raw_text=raw_text,
@@ -78,10 +98,18 @@ class ShadowBuffer:
     def scratch_last(self, discard_audio: bool = True) -> ShadowSegment | None:
         """Efface le dernier segment injecté dans la fenêtre active via VK_BACK."""
         if not self._segments:
+            self._log_action("scratch_last", result="no_segment")
             return None
         seg = self._segments.pop()
         if seg.backspace_count > 0:
             self._send_backspaces(seg.backspace_count)
+        self._log_action(
+            "scratch_last",
+            result="erased",
+            backspace_count=seg.backspace_count,
+            erased_text=seg.injected_text,
+            discard_audio=discard_audio,
+        )
         if discard_audio:
             seg.audio_pcm = None
         self._active_selection_len = 0
@@ -96,12 +124,18 @@ class ShadowBuffer:
         Retourne `(ancien_segment, nouveau_segment)`.
         """
         if not self._segments:
+            self._log_action("replace_last", result="no_prior_segment", new_text=new_text)
             new_seg = self.inject_and_record(new_text, raw_text=new_text)
             return None, new_seg
 
         old_seg = self._segments.pop()
         if old_seg.backspace_count > 0:
             self._send_backspaces(old_seg.backspace_count)
+        self._log_action(
+            "replace_last_backspace",
+            backspace_count=old_seg.backspace_count,
+            erased_text=old_seg.injected_text,
+        )
 
         # Préserver l'espace initial si l'ancien segment commençait par une espace
         formatted_new = new_text
@@ -113,6 +147,13 @@ class ShadowBuffer:
             formatted_new = " " + formatted_new
 
         new_bs = self._send_text(formatted_new)
+        self._log_action(
+            "replace_last_inject",
+            text=formatted_new,
+            raw_text=new_text,
+            backspace_equiv=new_bs,
+            char_count=len(formatted_new),
+        )
         new_seg = ShadowSegment(
             injected_text=formatted_new,
             raw_text=new_text,
@@ -131,6 +172,7 @@ class ShadowBuffer:
         """
         target_clean = target_word.strip().lower()
         if not target_clean or not self._segments:
+            self._log_action("select_word", target=target_word, result="no_match_or_context")
             return False
 
         # Reconstruire la chaîne récente sur la ligne courante (sans traverser un saut de ligne)
@@ -140,6 +182,7 @@ class ShadowBuffer:
 
         idx = current_line.lower().rfind(target_clean)
         if idx == -1:
+            self._log_action("select_word", target=target_word, result="not_found")
             return False
 
         chars_from_end_to_word_end = len(current_line) - (idx + len(target_clean))
@@ -159,11 +202,19 @@ class ShadowBuffer:
 
         _send_inputs(events)
         self._active_selection_len = word_len
+        self._log_action(
+            "select_word",
+            target=target_word,
+            result="ok",
+            left_moves_to_end=chars_from_end_to_word_end,
+            shift_left_count=word_len,
+        )
         return True
 
     def press_enter_key(self) -> None:
         """Envoie une pression franche sur la touche Entrée (`VK_RETURN`)."""
         _send_inputs(_make_vk_events(VK_RETURN))
+        self._log_action("press_enter")
         self._segments.append(
             ShadowSegment(
                 injected_text="\n",

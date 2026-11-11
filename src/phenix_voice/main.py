@@ -18,7 +18,11 @@ from PySide6.QtWidgets import QApplication
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 
-from phenix_voice.profile.snapshot import ProfileSnapshotManager, SessionTraceLogger
+from phenix_voice.profile.snapshot import (
+    InjectionTraceLogger,
+    ProfileSnapshotManager,
+    SessionTraceLogger,
+)
 
 from phenix_voice.audio.capture import MicrophoneCapture
 from phenix_voice.audio.fingerprints import AcousticCommandProtector
@@ -62,7 +66,7 @@ class PhenixVoiceController:
         self._spelling_mode = False  # Mode épellation (alphabet radio international)
         self._correction_target_hwnd: int = 0  # fenêtre cible à restaurer avant injection de correction manuelle
 
-        self.shadow_buffer = ShadowBuffer()
+        self.shadow_buffer = ShadowBuffer(action_logger=self.injection_logger.log_action)
         self.arbitrator = PlausibilityArbitrator(
             enable_strict_dictionary=strict_dictionary
         )
@@ -71,7 +75,9 @@ class PhenixVoiceController:
         )
         self.protector = AcousticCommandProtector()
         self.engine: WhisperDirectMLEngine | None = None
+        self._session_id = time.strftime("session_%Y%m%d_%H%M%S")
         self.trace_logger = SessionTraceLogger()
+        self.injection_logger = InjectionTraceLogger(session_id=self._session_id)
         self.snapshot_manager = ProfileSnapshotManager()
 
         self._segment_queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=32)
@@ -486,7 +492,7 @@ class PhenixVoiceController:
                 pass
 
             # Trace de session avec audio (rotation bornée) pour savoir ce qui a été réellement dit
-            self.trace_logger.log(
+            seg_ts = self.trace_logger.log(
                 audio_pcm=segment,
                 raw_stt=result.text,
                 arbitrated=arbitrated.best_text,
@@ -498,12 +504,34 @@ class PhenixVoiceController:
                     "ms": round(result.total_ms, 0),
                     "plaus": round(arbitrated.plausibility_score, 2),
                     "conf": round(result.confidence, 2),
+                    "session_id": self._session_id,
                 },
             )
+            seg_audio = f"user_data/session_audio/seg_{seg_ts}.wav" if seg_ts else None
+            self.injection_logger.set_segment_context(
+                segment_ts=seg_ts,
+                audio=seg_audio,
+                intent=processed.intent.value,
+                raw_stt=result.text,
+                arbitrated=arbitrated.best_text,
+            )
+            # Journal de session : trace des commandes reconnues (et intentions) pour diagnostic
+            if processed.intent != VoiceIntentType.DICTATION:
+                self.injection_logger.log_action(
+                    "command_recognized",
+                    intent=processed.intent.value,
+                    raw_stt=result.text,
+                    arbitrated=arbitrated.best_text,
+                    text_to_inject=processed.text_to_inject,
+                    target_arg=getattr(processed, "target_arg", None),
+                    choice_index=getattr(processed, "choice_index", None),
+                )
 
             # Routage des intentions
             if processed.intent == VoiceIntentType.MUTE_MIC:
                 self.mute_mic_completely()
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, result="muted")
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.SHOW_HELP:
@@ -514,6 +542,8 @@ class PhenixVoiceController:
                     self.hud.set_state(MicState.SLEEPING)
                 else:
                     self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, help_visible=self._help_visible)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.ENTER_SPELLING:
@@ -523,6 +553,8 @@ class PhenixVoiceController:
                     result.total_ms,
                 )
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, spelling_mode=True)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.EXIT_SPELLING:
@@ -532,12 +564,16 @@ class PhenixVoiceController:
                     result.total_ms,
                 )
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, spelling_mode=False)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.SLEEP:
                 self.is_sleeping = True
                 self._spelling_mode = False
                 self.hud.set_state(MicState.SLEEPING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, sleeping=True)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.WAKE:
@@ -547,6 +583,8 @@ class PhenixVoiceController:
                 self.hud.set_transcript(
                     "Écoute reprise — Parlez librement", result.total_ms
                 )
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, sleeping=False)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.PRESS_ENTER:
@@ -554,6 +592,8 @@ class PhenixVoiceController:
                 self.shadow_buffer.press_enter_key()
                 self.hud.set_transcript("[Touche Entrée ↵]", result.total_ms)
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.OUPS_NO_LEARN:
@@ -567,9 +607,12 @@ class PhenixVoiceController:
                             last.alternatives[:3],
                             learn_enabled=False,
                         )
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, mode="disable_learn_in_correction")
                 else:
                     self.oups_scratch_without_learning()
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value, mode="scratch_no_learn")
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.SCRATCH_LAST:
@@ -577,6 +620,8 @@ class PhenixVoiceController:
                 self.shadow_buffer.scratch_last(discard_audio=False)
                 self.hud.set_transcript("[Dernier souffle effacé]", result.total_ms)
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.REVISE_COMMAND:
@@ -593,7 +638,15 @@ class PhenixVoiceController:
                         [],
                         learn_enabled=self._learn_on_correction,
                     )
+                self.injection_logger.log_action(
+                    "command_executed",
+                    intent=processed.intent.value,
+                    erased_text=(erased.injected_text if erased else None),
+                    erased_raw=(erased.raw_text if erased else None),
+                    result=("opened_correction" if erased else "no_segment"),
+                )
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.OPEN_CORRECTION:
@@ -601,11 +654,15 @@ class PhenixVoiceController:
                     self.shadow_buffer.select_word_in_last_segments(processed.target_arg)
                 self.open_correction_for_last()
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, target_arg=processed.target_arg)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.CHOOSE_ALT:
                 self.apply_correction_choice(processed.choice_index)
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, choice_index=processed.choice_index)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.APPLY_CORRECTION:
@@ -619,6 +676,8 @@ class PhenixVoiceController:
                         audio_pcm=segment,
                     )
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, correction_open=self._correction_open)
+                self.injection_logger.clear_segment_context()
                 continue
 
             if processed.intent == VoiceIntentType.SELECT_TARGET:
@@ -632,6 +691,8 @@ class PhenixVoiceController:
                 )
                 self.hud.set_transcript(msg, result.total_ms)
                 self.hud.set_state(MicState.LISTENING)
+                self.injection_logger.log_action("command_executed", intent=processed.intent.value, target_arg=processed.target_arg, found=ok)
+                self.injection_logger.clear_segment_context()
                 continue
 
             # Dictée de texte : si le volet « Corriger ça » est ouvert, la nouvelle dictée est
@@ -648,6 +709,12 @@ class PhenixVoiceController:
                         proposed = inject_text.lstrip(" ").strip()
                         self._pending_correction_text = proposed
                         self.hud.set_correction_edit_text(proposed)
+                        self.injection_logger.log_action(
+                            "dictation_proposed_to_correction",
+                            text=proposed,
+                            spelling_mode=self._spelling_mode,
+                            raw_stt=result.text,
+                        )
                         mode_tag = " [Épellation]" if self._spelling_mode else ""
                         self.hud.set_transcript(
                             proposed,
@@ -672,9 +739,16 @@ class PhenixVoiceController:
                         self.hud.set_transcript(
                             display_text, result.total_ms, alt_preview
                         )
+                else:
+                    self.injection_logger.log_action(
+                        "dictation_empty",
+                        spelling_mode=self._spelling_mode,
+                        raw_stt=result.text,
+                    )
 
             if not self.is_sleeping and not self.is_muted:
                 self.hud.set_state(MicState.LISTENING)
+            self.injection_logger.clear_segment_context()
 
     def shutdown(self) -> None:
         if not self._running:
