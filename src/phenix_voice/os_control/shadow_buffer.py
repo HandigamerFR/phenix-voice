@@ -49,7 +49,11 @@ class ShadowBuffer:
         return self._segments[-1] if self._segments else None
 
     def clear_context(self) -> None:
-        """Appelé lorsque l'utilisateur clique ailleurs à la souris."""
+        """Appelé lorsque l'utilisateur clique ailleurs à la souris ou déplace le curseur."""
+        # Invalider les segments précédents : on ne peut plus garantir que le curseur est
+        # immédiatement après le texte dicté, donc effacer/remplacer risquerait de détruire
+        # le mauvais texte dans l'éditeur.
+        self._segments.clear()
         self._active_selection_len = 0
 
     def inject_and_record(

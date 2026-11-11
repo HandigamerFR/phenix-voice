@@ -181,7 +181,9 @@ class PhenixVoiceController:
         """Ouvre le volet de correction sur le dernier segment dicté."""
         last = self.shadow_buffer.last_segment
         if last is None:
-            self.hud.set_transcript("[Aucun segment récent à corriger]", 0.0)
+            self.hud.set_transcript(
+                "[Aucun segment récent à corriger (curseur déplacé ou contexte perdu)]", 0.0
+            )
             return
         # Mémoriser la fenêtre cible (éditeur) pour pouvoir y réinjecter la correction même si le HUD prend le focus
         try:
@@ -360,6 +362,10 @@ class PhenixVoiceController:
         if erased is not None:
             self.hud.set_transcript(
                 "[Souffle effacé — Audio détruit (« Annuler sans apprendre »)]", 0.0
+            )
+        else:
+            self.hud.set_transcript(
+                "[Aucun segment à effacer (curseur déplacé ou contexte perdu)]", 0.0
             )
 
     def _close_correction_bar(self) -> None:
@@ -574,8 +580,14 @@ class PhenixVoiceController:
 
             if processed.intent == VoiceIntentType.SCRATCH_LAST:
                 self._close_correction_bar()
-                self.shadow_buffer.scratch_last(discard_audio=False)
-                self.hud.set_transcript("[Dernier souffle effacé]", result.total_ms)
+                erased = self.shadow_buffer.scratch_last(discard_audio=False)
+                if erased is not None:
+                    self.hud.set_transcript("[Dernier souffle effacé]", result.total_ms)
+                else:
+                    self.hud.set_transcript(
+                        "[Aucun segment à effacer (curseur déplacé ou contexte perdu)]",
+                        result.total_ms,
+                    )
                 self.hud.set_state(MicState.LISTENING)
                 continue
 
