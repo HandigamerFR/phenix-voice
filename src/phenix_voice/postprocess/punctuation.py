@@ -5,8 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import re
+from typing import Iterable, Mapping, TypeVar
 
-from phenix_voice.postprocess.rules import PhoneticRuleEngine, normalize_key
+from phenix_voice.postprocess.rules import (
+    PhoneticRuleEngine,
+    command_keys,
+    normalize_key,
+)
+
+_T = TypeVar("_T")
 
 
 class VoiceIntentType(str, Enum):
@@ -195,6 +202,40 @@ CHOOSE_MAP: dict[str, int] = {
     "numéro trois": 3,
     "numéro 3": 3,
 }
+
+
+# --- Index de comparaison des commandes (dérivés EN MÉMOIRE, jamais persistés) -----
+# Les tables ci-dessus restent écrites en français naturel (accents, apostrophes).
+# On en dérive ici, via `command_keys()`, toutes les formes tolérées à la
+# comparaison : casse, accents, apostrophes (droites/typographiques), ponctuation.
+# Ces index ne servent qu'au matching dans `process()` ; ils ne sont ni affichés ni
+# enregistrés sur disque.
+
+def _index_set(entries: Iterable[str]) -> set[str]:
+    return {variant for entry in entries for variant in command_keys(entry)}
+
+
+def _index_map(table: Mapping[str, _T]) -> dict[str, _T]:
+    index: dict[str, _T] = {}
+    for entry, value in table.items():
+        for variant in command_keys(entry):
+            index.setdefault(variant, value)
+    return index
+
+
+WAKE_KEYS = _index_set(WAKE_COMMANDS)
+SLEEP_KEYS = _index_set(SLEEP_COMMANDS)
+MUTE_KEYS = _index_set(MUTE_COMMANDS)
+SHOW_HELP_KEYS = _index_set(SHOW_HELP_COMMANDS)
+APPLY_CORRECTION_KEYS = _index_set(APPLY_CORRECTION_COMMANDS)
+SCRATCH_KEYS = _index_set(SCRATCH_COMMANDS)
+OUPS_KEYS = _index_set(OUPS_COMMANDS)
+SPELLING_ENTER_KEYS = _index_set(SPELLING_ENTER_COMMANDS)
+SPELLING_EXIT_KEYS = _index_set(SPELLING_EXIT_COMMANDS)
+OPEN_CORRECTION_KEYS = _index_set(OPEN_CORRECTION_COMMANDS)
+COMMAND_RECALIBRATION_KEYS = _index_map(COMMAND_RECALIBRATION_COMMANDS)
+PRESS_ENTER_KEYS = _index_set(PRESS_ENTER_COMMANDS)
+CHOOSE_KEYS = _index_map(CHOOSE_MAP)
 
 # Remplacements de ponctuation dictée et équivalences phonétiques dysarthriques
 SPOKEN_PUNCTUATION_RULES: list[tuple[re.Pattern[str], str]] = [
@@ -437,26 +478,40 @@ class HybridPunctuationProcessor:
             else raw_text.strip()
         )
         norm = normalize_key(mapped)
+        # Formes tolérées de l'énoncé pour le matching des commandes (en mémoire) :
+        # « C'était une commande, » ≡ « c'etait une commande » ≡ « CETAIT UNE COMMANDE ! »
+        ckey = command_keys(mapped)
+
+        def _hit(index: set[str]) -> bool:
+            return any(v in index for v in ckey)
+
+        def _lookup(index: Mapping[str, _T]) -> _T | None:
+            for v in ckey:
+                if v in index:
+                    return index[v]
+            return None
 
         # 2. En mode veille vocale (« Phénix repos »), seules quelques commandes de contrôle restent actives
         if is_sleeping:
-            if norm in WAKE_COMMANDS or any(norm.endswith(cmd) for cmd in WAKE_COMMANDS):
+            if _hit(WAKE_KEYS) or any(
+                v.endswith(w) for v in ckey for w in WAKE_KEYS
+            ):
                 return ProcessedUtterance(
                     intent=VoiceIntentType.WAKE, raw_text=raw_text, mapped_text=mapped
                 )
-            if norm in MUTE_COMMANDS:
+            if _hit(MUTE_KEYS):
                 return ProcessedUtterance(
                     intent=VoiceIntentType.MUTE_MIC,
                     raw_text=raw_text,
                     mapped_text=mapped,
                 )
-            if norm in SHOW_HELP_COMMANDS:
+            if _hit(SHOW_HELP_KEYS):
                 return ProcessedUtterance(
                     intent=VoiceIntentType.SHOW_HELP,
                     raw_text=raw_text,
                     mapped_text=mapped,
                 )
-            if norm in SPELLING_EXIT_COMMANDS:
+            if _hit(SPELLING_EXIT_KEYS):
                 return ProcessedUtterance(
                     intent=VoiceIntentType.EXIT_SPELLING,
                     raw_text=raw_text,
@@ -470,76 +525,78 @@ class HybridPunctuationProcessor:
             )
 
         # 3. Commandes de contrôle du micro, aide et modes
-        if norm in MUTE_COMMANDS:
+        if _hit(MUTE_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.MUTE_MIC, raw_text=raw_text, mapped_text=mapped
             )
-        if norm in SLEEP_COMMANDS:
+        if _hit(SLEEP_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.SLEEP, raw_text=raw_text, mapped_text=mapped
             )
-        if norm in WAKE_COMMANDS:
+        if _hit(WAKE_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.WAKE, raw_text=raw_text, mapped_text=mapped
             )
-        if norm in SHOW_HELP_COMMANDS:
+        if _hit(SHOW_HELP_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.SHOW_HELP, raw_text=raw_text, mapped_text=mapped
             )
-        if norm in SPELLING_EXIT_COMMANDS:
+        if _hit(SPELLING_EXIT_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.EXIT_SPELLING, raw_text=raw_text, mapped_text=mapped
             )
-        if norm in SPELLING_ENTER_COMMANDS:
+        if _hit(SPELLING_ENTER_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.ENTER_SPELLING, raw_text=raw_text, mapped_text=mapped
             )
-        if norm in COMMAND_RECALIBRATION_COMMANDS:
+        recal_target = _lookup(COMMAND_RECALIBRATION_KEYS)
+        if recal_target is not None:
             return ProcessedUtterance(
                 intent=VoiceIntentType.REVISE_COMMAND,
                 raw_text=raw_text,
                 mapped_text=mapped,
-                target_arg=COMMAND_RECALIBRATION_COMMANDS[norm],
+                target_arg=recal_target,
             )
 
         # 4. Commandes de correction, d'édition et de touche Entrée
-        if norm in APPLY_CORRECTION_COMMANDS:
+        if _hit(APPLY_CORRECTION_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.APPLY_CORRECTION,
                 raw_text=raw_text,
                 mapped_text=mapped,
             )
-        if norm in PRESS_ENTER_COMMANDS:
+        if _hit(PRESS_ENTER_KEYS):
             self._after_sentence_end = True
             return ProcessedUtterance(
                 intent=VoiceIntentType.PRESS_ENTER,
                 raw_text=raw_text,
                 mapped_text=mapped,
             )
-        if norm in OUPS_COMMANDS:
+        if _hit(OUPS_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.OUPS_NO_LEARN,
                 raw_text=raw_text,
                 mapped_text=mapped,
             )
-        if norm in SCRATCH_COMMANDS:
+        if _hit(SCRATCH_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.SCRATCH_LAST,
                 raw_text=raw_text,
                 mapped_text=mapped,
             )
-        if norm in OPEN_CORRECTION_COMMANDS:
+        if _hit(OPEN_CORRECTION_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.OPEN_CORRECTION,
                 raw_text=raw_text,
                 mapped_text=mapped,
             )
-        if norm in CHOOSE_MAP:
+        choice = _lookup(CHOOSE_KEYS)
+        if choice is not None:
             return ProcessedUtterance(
                 intent=VoiceIntentType.CHOOSE_ALT,
                 raw_text=raw_text,
                 mapped_text=mapped,
-                choice_index=CHOOSE_MAP[norm],
+                choice_index=choice,
             )
 
         # Commandes paramétrées : « Sélectionner [mot] » / « Corriger [mot] »

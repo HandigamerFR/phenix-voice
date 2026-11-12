@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import unicodedata
 
 
 def normalize_key(text: str) -> str:
@@ -20,6 +21,43 @@ def normalize_key(text: str) -> str:
     cleaned = re.sub(r"[.!?,;:«»\"'…]+", " ", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def command_keys(text: str) -> list[str]:
+    """Formes de comparaison d'une commande — **uniquement en mémoire**.
+
+    La forme naturelle (accents et apostrophes **conservés**) fait foi : une table
+    écrite « c'était une commande » reconnaît « C'était une commande » tel quel.
+    Les variantes repliées (sans accents, apostrophes supprimées ou détachées) ne
+    servent que de filet pour les sorties de Whisper dégradées (« c'etait »,
+    « c etait »). Elles ne sont jamais affichées ni enregistrées sur disque.
+
+    Principe de design : le code reste en français naturel ; seule cette clé de
+    comparaison tolère les écarts de transcription.
+    """
+    keys: list[str] = []
+
+    def _add(candidate: str) -> None:
+        cleaned = re.sub(r"\s+", " ", candidate).strip()
+        if cleaned and cleaned not in keys:
+            keys.append(cleaned)
+
+    # 1) Forme naturelle : casse réduite, apostrophes typographiques redressées,
+    #    ponctuation et tirets réduits à des espaces (accents et apostrophes gardés).
+    lowered = text.strip().lower().replace("’", "'")
+    natural = re.sub(r"[.!?,;:«»\"…–—-]+", " ", lowered)
+    _add(natural)
+    if not natural:
+        return keys
+
+    # 2) Variantes repliées (filet anti-écarts STT) : accents retirés, puis
+    #    apostrophes conservées / supprimées / détachées.
+    decomposed = unicodedata.normalize("NFD", natural)
+    no_accents = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    _add(no_accents)
+    _add(no_accents.replace("'", ""))
+    _add(no_accents.replace("'", " "))
+    return keys
 
 
 # Équivalences initiales déjà observées dans les journaux réels de l'utilisateur

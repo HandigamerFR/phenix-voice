@@ -52,13 +52,24 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 > de `JOURNAL_DE_BORD.md` + `git status`/`git log --oneline -5` suffisent à reprendre sans mémoire.
 > Dans la même conversation, je reçois aussi l'historique (résumé de session) et je vois l'interruption.
 
-- **Dernier état stable** : `5ee51ac` poussé (correctif double chemin injection + `tools/injection_bench.py`). Arbre Git **propre**, tests `pytest` → 4 passed, app démarre (`--mute`), balayage des apps de test validé.
-- **Tâche EN COURS** : *(aucune — en attente du test utilisateur en direct)* → c'est le point de reprise.
+- **Dernier état stable** : `a42a519` poussé (bloc reprise anti-interruption). Arbre Git : **modifs EN COURS non committées** (voir ci-dessous).
+- **Tâche EN COURS (12/11)** : correctif **« C'était une commande » transcrit en texte** — **CODE TERMINÉ & TESTÉ, reste à committer/pusher** :
+  - Racine : `normalize_key()` transformait l'entrée (`apostrophe → espace`) alors que les tables stockaient les clés **non normalisées** (`c'était une commande`) → jamais de correspondance. Bug identique pour TOUTE commande à apostrophe (aide « Qu'est-ce que… », « C'est corrigé », « J'ai fourché »…).
+  - Correctif : `command_keys()` dans `postprocess/rules.py` (forme naturelle **avec accents/apostrophes en tête** + variantes repliées en mémoire), index dérivés `*_KEYS` dans `postprocess/punctuation.py` (`_index_set`/`_index_map`), dispatch `process()` basculée sur `_hit()`/`_lookup()`. **Principe design imposé par l'utilisateur : tables en français naturel, aucune variante dégradée dans le code, tolérance uniquement dans la clé de comparaison (jamais persistée).**
+  - Tests : nouveau `tests/test_command_matching.py` (5 tests) ; suite → **9 passed, 3 deselected** ; app `--mute` démarre OK.
+  - **Reste immédiat** : commit+push de ce correctif + entrée JOURNAL + maj §4.
+- **Décisions design prises (12/11, à implémenter ensuite)** :
+  1. **Fenêtres de correction SÉPARÉES** (même si elles cachent le texte en cours d'édition) — l'utilisateur préfère ne pas être limité en place d'affichage ; le HUD/correction peut s'ouvrir en fenêtre distincte.
+  2. **« C'était une commande » → panneau dédié** : afficher la **liste des commandes possibles triées par proximité phonétique** (la plus proche en premier), dans la fenêtre de correction séparée.
+  3. **Formes orales de symboles/mots** (« virgule » → `,`, etc., façon Dragon) pour dicter plus facilement dans les commandes et la dictée — à concevoir (s'appuyer sur `SPOKEN_PUNCTUATION_RULES`).
+  4. **Inspiration aide Dragon** : `C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual` (consulter, **ne pas recopier**).
 - **À faire ensuite, dans l'ordre** :
-  1. **Test utilisateur en direct** : dictée longue dans le Bloc-notes puis ailleurs ; corrections (« Corriger ça », choix 1/2/3, « C'était une commande »). Vérifier dans `logs/injection_trace.jsonl` : `send_path` = `messages` en Bloc-notes, `sendinput` ailleurs, et signaler tout `sendinput_fallback` (avec `messages_fallback_reason`).
-  2. **Anomalies ouvertes** : `dictation_empty` (segments reconnus non injectés : `seg_20261111_145733`, `_145914`, `_150052`) et `select_word not_found` (« ça corrigez ça »).
-  3. Correction sur textes longs (UI Automation + historique multi-segments) → Studio/rollback → LoRA.
-- **Pièges à connaître pour la reprise** : ne pas définir `PHENIX_INJECTION_PATH` en permanence (diagnostic uniquement) ; le banc `tools/injection_bench.py` ferme les applications de test en début/fin de série (Bloc-notes compris, en force) ; le Bloc-notes Win11 restaure sa session au lancement (le banc efface le document témoins de toute façon) ; lecture du texte reçu = presse-papier vidé avant chaque copie.
+  1. Commit+push du correctif « C'était une commande » + JOURNAL + maj §4.
+  2. Formes orales des symboles (« virgule »…) — proposer choix via outil `question`.
+  3. Fenêtre de correction séparée + liste des commandes triée par proximité phonétique pour « C'était une commande ».
+  4. Test utilisateur en direct ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).
+  5. Correction sur textes longs (UI Automation + multi-segments) → Studio/rollback → LoRA.
+- **Pièges à connaître pour la reprise** : ne pas définir `PHENIX_INJECTION_PATH` en permanence (diagnostic uniquement) ; le banc `tools/injection_bench.py` ferme les applications de test en début/fin de série (Bloc-notes compris, en force) ; le Bloc-notes Win11 restaure sa session au lancement (le banc efface le document témoin de toute façon) ; lecture du texte reçu = presse-papier vidé avant chaque copie ; quota gratuit = prendre son temps, réserver les ~6 % payants aux blocages impossibles.
 
 ### 5. Règle de Fin de Session
 Avant de clore notre session (ou à chaque jalon validé), tu devras systématiquement :
