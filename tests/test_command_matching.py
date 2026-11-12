@@ -68,6 +68,56 @@ def test_dictation_is_not_grabbed_by_command_matching() -> None:
     assert r.text_to_inject == "Bonjour, comment allez-vous"
 
 
+def test_spelling_exit_forms_include_passer_en_mode_dictee() -> None:
+    """Sortie de la fenêtre d'épellation : formes validées 12/11 (« passer en mode dictée »)."""
+    proc = HybridPunctuationProcessor()
+    for text in (
+        "Fin épellation",
+        "Mode dictée",
+        "Passer en mode dictée",
+        "passer en mode dictee",  # variante sans accent (index mémoire uniquement)
+        "Retour en mode dictée",
+        "fin d'épellation",
+    ):
+        got = proc.process(text)
+        assert got.intent == VoiceIntentType.EXIT_SPELLING, f"{text!r} -> {got.intent.value}"
+
+
+def test_spelling_enter_forms_still_recognized() -> None:
+    proc = HybridPunctuationProcessor()
+    for text in ("Mode épellation", "alphabet radio", "mode epeler"):
+        got = proc.process(text)
+        assert got.intent == VoiceIntentType.ENTER_SPELLING, f"{text!r} -> {got.intent.value}"
+
+
+def test_spelling_mode_restricts_intents_to_letters_and_safety() -> None:
+    """En mode épellation, seules les lettres/chiffres/symboles/espace + sécurité sont écoutées."""
+    from phenix_voice.main import SPELLING_ALLOWED_INTENTS
+
+    allowed = SPELLING_ALLOWED_INTENTS
+    assert VoiceIntentType.DICTATION in allowed  # converti en alphabet radio
+    assert VoiceIntentType.EXIT_SPELLING in allowed
+    assert VoiceIntentType.APPLY_CORRECTION in allowed
+    for safety in (
+        VoiceIntentType.MUTE_MIC,
+        VoiceIntentType.SLEEP,
+        VoiceIntentType.WAKE,
+        VoiceIntentType.SHOW_HELP,
+    ):
+        assert safety in allowed, safety
+    for blocked in (
+        VoiceIntentType.ENTER_SPELLING,  # déjà en épellation : sans effet
+        VoiceIntentType.OPEN_CORRECTION,
+        VoiceIntentType.CHOOSE_ALT,
+        VoiceIntentType.SELECT_TARGET,
+        VoiceIntentType.SCRATCH_LAST,
+        VoiceIntentType.OUPS_NO_LEARN,
+        VoiceIntentType.PRESS_ENTER,
+        VoiceIntentType.REVISE_COMMAND,
+    ):
+        assert blocked not in allowed, blocked
+
+
 def test_choose_alt_supports_four_to_nine() -> None:
     """9 alternatives de correction : « Choisir quatre…neuf » (et variantes chiffre/numéro)."""
     proc = HybridPunctuationProcessor()

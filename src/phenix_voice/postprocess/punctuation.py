@@ -160,6 +160,10 @@ SPELLING_EXIT_COMMANDS: set[str] = {
     "stop epellation",
     "mode dictée",
     "mode dictee",
+    "passer en mode dictée",
+    "passer en mode dictee",
+    "retour en mode dictée",
+    "retour en mode dictee",
     "fin de l'épellation",
     "fin de l epellation",
 }

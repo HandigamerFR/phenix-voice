@@ -40,6 +40,20 @@ from phenix_voice.postprocess.punctuation import (
 from phenix_voice.stt.engine import WhisperDirectMLEngine
 from phenix_voice.ui.hud import MicState, PhenixHUD
 
+# En mode épellation, la fenêtre n'écoute QUE les lettres / chiffres / symboles /
+# espace (DICTATION convertie en alphabet radio) + la commande de sortie, la
+# validation d'une correction ouverte, et les commandes de sécurité (micro, veille,
+# aide). Toute autre commande est ignorée et journalisée (« spelling_command_ignored »).
+SPELLING_ALLOWED_INTENTS: set[VoiceIntentType] = {
+    VoiceIntentType.DICTATION,
+    VoiceIntentType.EXIT_SPELLING,
+    VoiceIntentType.APPLY_CORRECTION,
+    VoiceIntentType.MUTE_MIC,
+    VoiceIntentType.SLEEP,
+    VoiceIntentType.WAKE,
+    VoiceIntentType.SHOW_HELP,
+}
+
 
 class PhenixVoiceController:
     """Orchestrateur temps réel :
@@ -66,6 +80,7 @@ class PhenixVoiceController:
         self._help_visible = False
         self._pending_correction_text = ""
         self._spelling_mode = False  # Mode épellation (alphabet radio international)
+        self._spelling_from_correction = False  # fenêtre d'épellation ouverte depuis la correction
         self._correction_target_hwnd: int = 0  # fenêtre cible à restaurer avant injection de correction manuelle
 
         self._session_id = time.strftime("session_%Y%m%d_%H%M%S")
@@ -99,6 +114,10 @@ class PhenixVoiceController:
             on_add_spoken_form=self.add_spoken_form_from_correction,
             # Fermeture de la fenêtre de correction (✕ ou titre) = annuler sans rien insérer
             on_close_correction=self._close_correction_bar,
+            # Fenêtre d'épellation séparée (depuis la correction ou à tout moment)
+            on_enter_spelling=self.enter_spelling_mode,
+            on_spelling_text_changed=self.set_spelling_text_from_ui,
+            on_close_spelling=self._exit_spelling_mode,
         )
 
         self.segmenter = BreathSegmenter(
@@ -239,6 +258,9 @@ class PhenixVoiceController:
             muted=self.is_muted,
             **details,
         )
+        # La veille vocale ferme la fenêtre d'épellation (la reprise n'est pas mémorisée).
+        if self.is_sleeping:
+            self._exit_spelling_mode()
 
     def open_correction_for_last(self) -> None:
         """Ouvre le volet de correction sur le dernier segment dicté."""
@@ -345,6 +367,9 @@ class PhenixVoiceController:
     def set_pending_correction_text(self, new_text: str) -> None:
         if self._correction_open:
             self._pending_correction_text = new_text.strip()
+            # Synchroniser le miroir de la fenêtre d'épellation ouverte depuis la correction
+            if self._spelling_mode:
+                self.hud.set_spelling_text(self._pending_correction_text)
 
     def apply_manual_correction(self, new_text: str) -> None:
         """Applique la correction saisie manuellement dans le champ du volet de correction."""
@@ -365,6 +390,39 @@ class PhenixVoiceController:
         if text:
             self._perform_replacement(text, learn=self._learn_on_correction)
 
+    def enter_spelling_mode(self) -> None:
+        """Ouvre la fenêtre d'épellation séparée (depuis la correction ou à tout moment).
+
+        - Depuis la correction : champ pré-rempli avec le texte en attente, modifiable ;
+          les lettres dictées s'ajoutent, rien n'est inséré avant validation explicite.
+        - Hors correction : le texte épelé est inséré directement dans l'éditeur cible.
+        """
+        if self._spelling_mode:
+            return
+        self._spelling_mode = True
+        self._spelling_from_correction = self._correction_open
+        prefill = self._pending_correction_text.strip() if self._correction_open else ""
+        self.hud.show_spelling_window(prefill, from_correction=self._correction_open)
+        self.injection_logger.log_action(
+            "spelling_mode_entered", from_correction=self._correction_open
+        )
+
+    def _exit_spelling_mode(self) -> None:
+        """Sortie du mode épellation (voix « Fin épellation » / « Passer en mode dictée » ou ✕)."""
+        was_active = self._spelling_mode
+        self._spelling_mode = False
+        self._spelling_from_correction = False
+        self.hud.hide_spelling_window()
+        if was_active:
+            self.injection_logger.log_action("spelling_mode_exited")
+
+    def set_spelling_text_from_ui(self, new_text: str) -> None:
+        """Édition manuelle dans la fenêtre d'épellation (depuis la correction) → texte en attente."""
+        if self._correction_open:
+            cleaned = new_text.strip()
+            self._pending_correction_text = cleaned
+            self.hud.set_correction_edit_text(cleaned)
+
     def toggle_help(self) -> None:
         self._help_visible = not self._help_visible
         self.hud.show_help(self._build_help_text(), self._help_visible)
@@ -381,8 +439,8 @@ class PhenixVoiceController:
             "• <b>« Que puis-je dire ? »</b> : afficher/masquer cette aide"
         )
         spelling_note = (
-            "• <b>« Mode épellation »</b> : épeler avec l’alphabet radio (Alpha, Bravo, Charlie…)<br>"
-            "• <b>« Fin épellation »</b> / <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
+            "• <b>« Mode épellation »</b> : ouvre la fenêtre d'épellation dédiée (alphabet radio : Alpha, Bravo, Charlie…, chiffres, symboles, espace)<br>"
+            "• <b>« Fin épellation »</b> / <b>« Passer en mode dictée »</b> : fermer la fenêtre et revenir à la dictée normale<br>"
         )
         if self._correction_open:
             mic_info = ""
@@ -396,7 +454,7 @@ class PhenixVoiceController:
                 "• <b>Re-dicter la phrase</b> : propose une nouvelle correction dans le champ (PAS appliquée automatiquement)<br>"
                 "• <b>« Valider la correction »</b> (ou bouton <b>[Appliquer la correction]</b>) : appliquer explicitement la correction<br>"
                 "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle précise<br>"
-                "• <b>« Mode épellation »</b> : épeler en alphabet radio (Alpha, Bravo…) pour corriger lettre par lettre<br>"
+                "• <b>« Mode épellation »</b> ou bouton <b>[🔤 Épellation]</b> : fenêtre d'épellation dédiée, pré-remplie avec le texte à corriger — épeler lettre par lettre (Alpha, Bravo…), le texte s'ajoute au champ puis vous validez<br>"
                 "• <b>« Annuler sans apprendre »</b> ou bascule du bouton : passer en mode <b>SANS apprendre</b> (ne pollue pas le profil)<br>"
                 "• <b>« Effacer ça »</b> : annuler le segment<br>"
                 "• <b>« Phénix repos »</b> / <b>F9</b> ou <b>« Couper Phénix »</b> / <b>F8</b> : mettre en pause le micro sans fermer la correction<br>"
@@ -413,16 +471,17 @@ class PhenixVoiceController:
                 + common
             )
         elif self._spelling_mode:
-            state = "<b>État : MODE ÉPELLATION (alphabet radio international)</b>"
+            state = "<b>État : MODE ÉPELLATION (fenêtre dédiée — lettres, chiffres, symboles, espace)</b>"
             cmds = (
-                "• Dites <b>Alpha, Bravo, Charlie…</b> pour épeler des lettres (utile en correction, en double avec le clavier)<br>"
+                "• <b>Seules les commandes d'épellation et de sécurité sont écoutées</b> : les autres commandes sont ignorées tant que la fenêtre est ouverte (fermez-la pour tout faire)<br>"
+                "• Dites <b>Alpha, Bravo, Charlie…</b> pour épeler des lettres (miroir dans la fenêtre, ou insertion directe dans l'éditeur hors correction)<br>"
                 "• <b>« Chiffre un / Chiffre 5 »</b> : insérer le caractère numérique (1, 5…)<br>"
                 "• <b>« En lettres un »</b> ou <b>« Mot un »</b> : insérer le mot littéral « un » (pas le chiffre)<br>"
                 "• <b>« Virgule », « Point », « Arobase », « Astérisque »…</b> : insèrent le symbole (ex. adresse e-mail : « Mot laure point arobase mot gmail »)<br>"
                 "• <b>« Espace »</b> : insérer un espace<br>"
-                "• <b>« Fin épellation »</b> ou <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
-                "• <b>« Valider la correction »</b> : appliquer la correction si le volet est ouvert<br>"
-                "• <b>« Corriger ça »</b>, <b>« Effacer ça »</b>, <b>« Annuler sans apprendre »</b> restent disponibles<br>"
+                "• <b>« Fin épellation »</b> ou <b>« Passer en mode dictée »</b> : fermer la fenêtre et revenir à la dictée normale<br>"
+                "• <b>« Valider la correction »</b> : appliquer le texte de la fenêtre (si ouverte depuis la correction)<br>"
+                "• <b>« Phénix écoute »</b>, <b>« Phénix repos »</b>, <b>« Couper Phénix »</b>, <b>« Que puis-je dire ? »</b> restent actifs<br>"
                 + common
             )
         else:
@@ -492,6 +551,9 @@ class PhenixVoiceController:
             self._correction_open = False
             self._pending_correction_text = ""
             self.hud.hide_correction_panel()
+            # La fenêtre d'épellation ouverte DEPUIS la correction perd son contexte : on la ferme aussi.
+            if self._spelling_from_correction:
+                self._exit_spelling_mode()
 
     def _save_learned_correction_sample(
         self, audio_pcm: np.ndarray, heard_text: str, corrected_text: str
@@ -662,6 +724,25 @@ class PhenixVoiceController:
                     )
 
                 # Routage des intentions
+                # Mode épellation : la fenêtre n'écoute QUE lettres / chiffres /
+                # symboles / espace (+ sécurité micro/veille/aide). Toute autre
+                # commande est ignorée et journalisée (droit de changer d'avis,
+                # pas d'effet de bord caché).
+                if self._spelling_mode and (
+                    processed.intent not in SPELLING_ALLOWED_INTENTS
+                    or (
+                        processed.intent == VoiceIntentType.APPLY_CORRECTION
+                        and not self._correction_open
+                    )
+                ):
+                    self.injection_logger.log_action(
+                        "spelling_command_ignored",
+                        intent=processed.intent.value,
+                        raw_stt=result.text,
+                    )
+                    self.injection_logger.clear_segment_context()
+                    continue
+
                 if processed.intent == VoiceIntentType.MUTE_MIC:
                     self.mute_mic_completely()
                     self.injection_logger.log_action("command_executed", intent=processed.intent.value, result="muted")
@@ -681,9 +762,11 @@ class PhenixVoiceController:
                     continue
 
                 if processed.intent == VoiceIntentType.ENTER_SPELLING:
-                    self._spelling_mode = True
+                    self.enter_spelling_mode()
                     self.hud.set_transcript(
-                        "Mode épellation activé — dites Alpha, Bravo, Charlie… (« Fin épellation » pour quitter)",
+                        "Mode épellation activé — dites Alpha, Bravo, Charlie… "
+                        "« chiffre 5 », « espace » (« Fin épellation » / "
+                        "« Passer en mode dictée » pour quitter)",
                         result.total_ms,
                     )
                     self.hud.set_state(MicState.LISTENING)
@@ -692,7 +775,7 @@ class PhenixVoiceController:
                     continue
 
                 if processed.intent == VoiceIntentType.EXIT_SPELLING:
-                    self._spelling_mode = False
+                    self._exit_spelling_mode()
                     self.hud.set_transcript(
                         "Mode épellation désactivé — retour à la dictée normale",
                         result.total_ms,
@@ -705,7 +788,7 @@ class PhenixVoiceController:
                 if processed.intent == VoiceIntentType.SLEEP:
                     prev_sleeping, prev_muted = self.is_sleeping, self.is_muted
                     self.is_sleeping = True
-                    self._spelling_mode = False
+                    self._exit_spelling_mode()
                     self.hud.set_state(MicState.SLEEPING)
                     self.injection_logger.log_action(
                         "sleep_state_changed",
@@ -866,9 +949,17 @@ class PhenixVoiceController:
                     )
                     if inject_text:
                         if self._correction_open:
-                            proposed = inject_text.lstrip(" ").strip()
+                            if self._spelling_mode:
+                                # Épellation depuis la correction : chaque chunk s'AJOUTE
+                                # au texte pré-rempli (pas de remplacement) ; rien n'est
+                                # inséré dans l'éditeur avant validation explicite.
+                                proposed = self._pending_correction_text + inject_text
+                            else:
+                                proposed = inject_text.lstrip(" ").strip()
                             self._pending_correction_text = proposed
                             self.hud.set_correction_edit_text(proposed)
+                            if self._spelling_mode:
+                                self.hud.set_spelling_text(proposed)
                             self.injection_logger.log_action(
                                 "dictation_proposed_to_correction",
                                 text=proposed,
@@ -896,6 +987,9 @@ class PhenixVoiceController:
                                 alternatives=seg_alternatives,
                                 audio_pcm=segment,
                             )
+                            if self._spelling_mode:
+                                # Miroir dans la fenêtre d'épellation (insertion directe)
+                                self.hud.append_spelling_text(inject_text)
                             alt_preview = (
                                 f"(Alt: {arbitrated.ranked_alternatives[0]})"
                                 if arbitrated.ranked_alternatives and not self._spelling_mode

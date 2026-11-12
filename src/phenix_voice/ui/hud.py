@@ -5,6 +5,10 @@
   (voix « Choisir un…neuf » ou clic), champ éditable, validation explicite
   (rien n'est inséré avant), séparation stricte « 🧠 Corriger & Apprendre » vs
   « 🛡️ Corriger SANS apprendre (Oups) » et ajout de forme orale personnelle.
+- **Fenêtre d'ÉPELLATION SÉPARÉE** (décision 12/11) : n'écoute que lettres /
+  chiffres / symboles / espace (restriction appliquée dans le routage de main.py) ;
+  depuis la correction : champ pré-rempli et modifiable (rien inséré avant validation) ;
+  hors correction : texte épelé inséré directement dans l'éditeur cible.
 """
 
 from __future__ import annotations
@@ -86,6 +90,10 @@ class HUDSignals(QObject):
     correction_opened = Signal(str, list, bool)  # (target_text, alternatives, learn_mode)
     correction_closed = Signal()
     correction_edit_text_set = Signal(str)  # texte dicté proposé pendant correction (sans application auto)
+    spelling_opened = Signal(str, bool)  # (texte pré-rempli, ouvert_depuis_la_correction)
+    spelling_closed = Signal()
+    spelling_text_set = Signal(str)   # miroir complet du texte en attente (mode correction)
+    spelling_text_append = Signal(str)  # chunk épelé ajouté (insertion directe hors correction)
     help_toggled = Signal(str, bool)  # (help_text, visible)
     symbol_choice_requested = Signal(str, list)  # (forme dictée, libellés des choix 1/2)
     symbol_choice_hidden = Signal()
@@ -111,6 +119,7 @@ class CorrectionWindow(QWidget):
         on_correction_text_changed: Callable[[str], None] | None,
         on_add_spoken_form: Callable[[str], None] | None,
         on_close: Callable[[], None] | None,
+        on_enter_spelling: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.on_select_alternative = on_select_alternative
@@ -119,6 +128,7 @@ class CorrectionWindow(QWidget):
         self.on_correction_text_changed = on_correction_text_changed
         self.on_add_spoken_form = on_add_spoken_form
         self.on_close = on_close
+        self.on_enter_spelling = on_enter_spelling
         self._programmatic_edit = False
         self._positioned_once = False
 
@@ -204,6 +214,17 @@ class CorrectionWindow(QWidget):
         self.learn_mode_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.learn_mode_btn.clicked.connect(self.on_toggle_learn_mode)
         header.addWidget(self.learn_mode_btn)
+
+        self.spelling_btn = QPushButton("🔤 Épellation")
+        self.spelling_btn.setObjectName("helpBtn")
+        self.spelling_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.spelling_btn.setToolTip(
+            "Ouvrir la fenêtre d'épellation dédiée (alphabet radio : Alpha, Bravo…), "
+            "pré-remplie avec le texte à corriger."
+        )
+        if self.on_enter_spelling is not None:
+            self.spelling_btn.clicked.connect(self.on_enter_spelling)
+        header.addWidget(self.spelling_btn)
 
         self.close_btn = QPushButton("✕ Fermer")
         self.close_btn.setObjectName("quitBtn")
@@ -365,6 +386,235 @@ class CorrectionWindow(QWidget):
             self.on_add_spoken_form(self.correction_edit.text())
 
 
+class SpellingWindow(QWidget):
+    """Fenêtre d'ÉPELLATION SÉPARÉE de la barre HUD (décision utilisateur 12/11).
+
+    - N'écoute **que** les lettres / chiffres / symboles / **[espace]** (alphabet
+      radio) + la commande de sortie — la restriction d'intentions est appliquée
+      dans le routage de `main.py`.
+    - **Depuis la correction** : champ **pré-rempli avec le texte du souffle
+      corrigé, modifiable** ; les lettres dictées s'ajoutent au texte, mais
+      **rien n'est inséré dans l'éditeur avant validation explicite**
+      (« Valider la correction » / [Appliquer la correction]).
+    - **Hors correction** : le texte épelé est inséré **directement dans
+      l'éditeur cible** jusqu'à la sortie (« Fin épellation » /
+      « Passer en mode dictée » / ✕) ; le champ sert de miroir en lecture seule.
+    """
+
+    def __init__(
+        self,
+        on_text_changed: Callable[[str], None] | None = None,
+        on_apply: Callable[[str], None] | None = None,
+        on_close: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(None)
+        self.on_text_changed = on_text_changed
+        self.on_apply = on_apply
+        self.on_close = on_close
+        self._from_correction = False
+        self._programmatic_edit = False
+        self._positioned_once = False
+
+        self.setWindowTitle("Phénix Voice — Épellation")
+        self.setWindowFlags(
+            Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint
+        )
+        # Ouvrir la fenêtre ne vole pas le focus de l'utilisateur (dictée continue).
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setMinimumWidth(720)
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        self.setStyleSheet(
+            """
+            QWidget { background-color: #0f172a; }
+            QLabel { color: #f8fafc; }
+            QPushButton {
+                background-color: #1e293b;
+                color: #e2e8f0;
+                border: 1px solid #475569;
+                border-radius: 7px;
+                padding: 5px 10px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                border-color: #94a3b8;
+            }
+            QPushButton#applyBtn {
+                background-color: #14532d;
+                border-color: #22c55e;
+                color: #dcfce7;
+            }
+            QPushButton#quitBtn {
+                background-color: #2a1818;
+                border-color: #7f1d1d;
+                color: #fecaca;
+                padding: 5px 9px;
+            }
+            QLineEdit#spellEdit {
+                background-color: #0f172a;
+                color: #f8fafc;
+                border: 1px solid #a78bfa;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 14px;
+            }
+            """
+        )
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(10, 8, 10, 8)
+        outer.setSpacing(6)
+
+        # Ligne 1 : titre + vider + fermer
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        self.title_label = QLabel("🔤 Épellation")
+        self.title_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        self.title_label.setStyleSheet("color: #a78bfa;")
+        self.title_label.setWordWrap(True)
+        header.addWidget(self.title_label, stretch=1)
+
+        self.clear_btn = QPushButton("🗑 Vider")
+        self.clear_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.clear_btn.setToolTip(
+            "Vider le champ (le texte déjà inséré dans l'éditeur n'est pas touché)."
+        )
+        self.clear_btn.clicked.connect(self._on_clear_clicked)
+        header.addWidget(self.clear_btn)
+
+        self.close_btn = QPushButton("✕ Fin épellation")
+        self.close_btn.setObjectName("quitBtn")
+        self.close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.close_btn.clicked.connect(self._request_close)
+        header.addWidget(self.close_btn)
+        outer.addLayout(header)
+
+        # Ligne 2 : champ (pré-rempli et modifiable en correction, miroir sinon)
+        self.spell_edit = QLineEdit()
+        self.spell_edit.setObjectName("spellEdit")
+        self.spell_edit.setPlaceholderText(
+            "Mode dictée : le texte épelé s'écrit directement dans l'éditeur (miroir ici)."
+        )
+        self.spell_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.spell_edit.textChanged.connect(self._on_text_changed)
+        outer.addWidget(self.spell_edit)
+
+        # Ligne 3 : validation (uniquement depuis la correction)
+        self.apply_btn = QPushButton("✅ Appliquer la correction")
+        self.apply_btn.setObjectName("applyBtn")
+        self.apply_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.apply_btn.clicked.connect(self._on_apply_clicked)
+        outer.addWidget(self.apply_btn)
+
+        # Ligne 4 : rappel des règles
+        self.hint_label = QLabel("")
+        self.hint_label.setFont(QFont("Segoe UI", 8))
+        self.hint_label.setStyleSheet("color: #94a3b8;")
+        self.hint_label.setWordWrap(True)
+        outer.addWidget(self.hint_label)
+
+    # --- API appelée par les signaux du HUD (thread GUI uniquement) -----------
+
+    def open_window(self, prefill: str, from_correction: bool) -> None:
+        self._from_correction = from_correction
+        self._set_text_programmatic(prefill)
+        if from_correction:
+            self.title_label.setText(
+                "🔤 Épellation — depuis la correction (Alpha, Bravo… ; les lettres "
+                "s'ajoutent au texte, rien inséré avant validation) :"
+            )
+            self.spell_edit.setReadOnly(False)
+            self.apply_btn.setVisible(True)
+            self.hint_label.setText(
+                "💡 Depuis la correction : éppez avec l'alphabet radio (Alpha, Bravo, "
+                "« chiffre 5 », « espace », symboles…). Le texte s'ajoute au champ, "
+                "rien n'est inséré avant [Appliquer la correction] ou "
+                "« Valider la correction ». Vous pouvez aussi modifier le champ à la main."
+            )
+        else:
+            self.title_label.setText(
+                "🔤 Épellation — texte inséré directement dans l'éditeur "
+                "(Alpha, Bravo… ; sortie : « Fin épellation » / « Passer en mode dictée »)"
+            )
+            self.spell_edit.setReadOnly(True)
+            self.apply_btn.setVisible(False)
+            self.hint_label.setText(
+                "💡 Hors correction : chaque lettre/chiffre/symbole dicté est inséré "
+                "directement dans l'éditeur cible ; ce champ est un simple miroir. "
+                "Dites « Fin épellation » ou « Passer en mode dictée » (ou cliquez ✕) "
+                "pour revenir à la dictée normale."
+            )
+
+        if not self.isVisible():
+            self._ensure_position()
+            self.show()
+        self.raise_()
+
+    def set_text(self, text: str) -> None:
+        """Miroir complet du texte en attente (mode correction)."""
+        self._set_text_programmatic(text)
+
+    def append_text(self, chunk: str) -> None:
+        """Ajoute un chunk épelé au miroir (insertion directe hors correction)."""
+        if not chunk:
+            return
+        self._set_text_programmatic(self.spell_edit.text() + chunk)
+
+    def close_window(self) -> None:
+        self.hide()
+        self._set_text_programmatic("")
+        self._from_correction = False
+
+    # --- Événements internes --------------------------------------------------
+
+    def _set_text_programmatic(self, text: str) -> None:
+        self._programmatic_edit = True
+        try:
+            self.spell_edit.setText(text)
+        finally:
+            self._programmatic_edit = False
+
+    def _ensure_position(self) -> None:
+        if self._positioned_once:
+            return
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            self.adjustSize()
+            x = geo.x() + (geo.width() - self.width()) // 2
+            y = geo.y() + 150
+            self.move(x, y)
+        self._positioned_once = True
+
+    def _request_close(self) -> None:
+        if self.on_close:
+            self.on_close()
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        # Fermer la fenêtre (✕ ou titre) = sortir du mode épellation.
+        if self.on_close:
+            self.on_close()
+        super().closeEvent(event)
+
+    def _on_text_changed(self, text: str) -> None:
+        if self._programmatic_edit:
+            return
+        if self.on_text_changed:
+            self.on_text_changed(text)
+
+    def _on_clear_clicked(self) -> None:
+        self._set_text_programmatic("")
+        if self._from_correction and self.on_text_changed:
+            self.on_text_changed("")
+
+    def _on_apply_clicked(self) -> None:
+        text = self.spell_edit.text().strip()
+        if text and self.on_apply:
+            self.on_apply(text)
+
+
 class PhenixHUD(QWidget):
     """Barre flottante toujours au premier plan (No-Focus / WS_EX_NOACTIVATE)
     pour ne jamais voler le curseur de la fenêtre cible.
@@ -385,6 +635,9 @@ class PhenixHUD(QWidget):
         on_correction_text_changed: Callable[[str], None] | None = None,
         on_add_spoken_form: Callable[[str], None] | None = None,
         on_close_correction: Callable[[], None] | None = None,
+        on_enter_spelling: Callable[[], None] | None = None,
+        on_spelling_text_changed: Callable[[str], None] | None = None,
+        on_close_spelling: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.on_toggle_mute = on_toggle_mute
@@ -407,6 +660,10 @@ class PhenixHUD(QWidget):
         self.signals.correction_opened.connect(self._apply_open_correction_slot)
         self.signals.correction_closed.connect(self._apply_close_correction_slot)
         self.signals.correction_edit_text_set.connect(self._apply_correction_edit_text_slot)
+        self.signals.spelling_opened.connect(self._apply_spelling_opened_slot)
+        self.signals.spelling_closed.connect(self._apply_spelling_closed_slot)
+        self.signals.spelling_text_set.connect(self._apply_spelling_text_set_slot)
+        self.signals.spelling_text_append.connect(self._apply_spelling_append_slot)
         self.signals.help_toggled.connect(self._apply_help_slot)
         self.signals.symbol_choice_requested.connect(self._apply_symbol_choice_slot)
         self.signals.symbol_choice_hidden.connect(self._apply_symbol_choice_hidden_slot)
@@ -419,6 +676,14 @@ class PhenixHUD(QWidget):
             on_correction_text_changed=on_correction_text_changed,
             on_add_spoken_form=on_add_spoken_form,
             on_close=on_close_correction,
+            on_enter_spelling=on_enter_spelling,
+        )
+
+        # Fenêtre d'ÉPELLATION SÉPARÉE (lettres / chiffres / symboles / espace)
+        self.spelling_window = SpellingWindow(
+            on_text_changed=on_spelling_text_changed,
+            on_apply=on_apply_manual_correction,
+            on_close=on_close_spelling,
         )
 
         self.setWindowFlags(
@@ -683,6 +948,23 @@ class PhenixHUD(QWidget):
         """Met à jour le champ de correction avec une proposition dictée (sans l'appliquer)."""
         self.signals.correction_edit_text_set.emit(text)
 
+    def show_spelling_window(self, prefill: str, from_correction: bool) -> None:
+        """Ouvre la fenêtre d'épellation (pré-remplie depuis la correction, ou vide)."""
+        self.signals.spelling_opened.emit(prefill, from_correction)
+
+    def hide_spelling_window(self) -> None:
+        """Ferme la fenêtre d'épellation (idempotent, appelable depuis n'importe quel thread)."""
+        self.signals.spelling_closed.emit()
+
+    def set_spelling_text(self, text: str) -> None:
+        """Miroir complet du texte en attente dans la fenêtre d'épellation (mode correction)."""
+        self.signals.spelling_text_set.emit(text)
+
+    def append_spelling_text(self, chunk: str) -> None:
+        """Ajoute un chunk épelé au miroir de la fenêtre (insertion directe hors correction)."""
+        if chunk:
+            self.signals.spelling_text_append.emit(chunk)
+
     def show_help(self, help_text: str, visible: bool = True) -> None:
         self.signals.help_toggled.emit(help_text, visible)
 
@@ -772,6 +1054,25 @@ class PhenixHUD(QWidget):
 
     def _apply_correction_edit_text_slot(self, text: str) -> None:
         self.correction_window.set_edit_text(text)
+
+    def _apply_spelling_opened_slot(self, prefill: str, from_correction: bool) -> None:
+        # La popup de choix de symbole ne doit pas chevaucher la fenêtre d'épellation
+        if self.symbol_frame.isVisible():
+            self.symbol_frame.setVisible(False)
+        self.spelling_window.open_window(prefill, from_correction)
+        # Si la fenêtre de correction est ouverte, placer l'épellation dessous
+        if self.correction_window.isVisible():
+            cg = self.correction_window.frameGeometry()
+            self.spelling_window.move(cg.left(), cg.bottom() + 10)
+
+    def _apply_spelling_closed_slot(self) -> None:
+        self.spelling_window.close_window()
+
+    def _apply_spelling_text_set_slot(self, text: str) -> None:
+        self.spelling_window.set_text(text)
+
+    def _apply_spelling_append_slot(self, chunk: str) -> None:
+        self.spelling_window.append_text(chunk)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
