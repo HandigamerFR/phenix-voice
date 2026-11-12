@@ -52,21 +52,24 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 > de `JOURNAL_DE_BORD.md` + `git status`/`git log --oneline -5` suffisent à reprendre sans mémoire.
 > Dans la même conversation, je reçois aussi l'historique (résumé de session) et je vois l'interruption.
 
-- **Dernier état stable** : `a42a519` poussé (bloc reprise anti-interruption). Arbre Git : **modifs EN COURS non committées** (voir ci-dessous).
-- **Tâche EN COURS (12/11)** : correctif **« C'était une commande » transcrit en texte** — **CODE TERMINÉ & TESTÉ, reste à committer/pusher** :
-  - Racine : `normalize_key()` transformait l'entrée (`apostrophe → espace`) alors que les tables stockaient les clés **non normalisées** (`c'était une commande`) → jamais de correspondance. Bug identique pour TOUTE commande à apostrophe (aide « Qu'est-ce que… », « C'est corrigé », « J'ai fourché »…).
-  - Correctif : `command_keys()` dans `postprocess/rules.py` (forme naturelle **avec accents/apostrophes en tête** + variantes repliées en mémoire), index dérivés `*_KEYS` dans `postprocess/punctuation.py` (`_index_set`/`_index_map`), dispatch `process()` basculée sur `_hit()`/`_lookup()`. **Principe design imposé par l'utilisateur : tables en français naturel, aucune variante dégradée dans le code, tolérance uniquement dans la clé de comparaison (jamais persistée).**
-  - Tests : nouveau `tests/test_command_matching.py` (5 tests) ; suite → **9 passed, 3 deselected** ; app `--mute` démarre OK.
-  - **Reste immédiat** : commit+push de ce correctif + entrée JOURNAL + maj §4.
+- **Dernier état stable** : `9a1c4aa` poussé (correctif « C'était une commande »). Arbre Git : **modifs EN COURS non committées** (jalon ci-dessous, tests verts).
+- **Jalon EN COURS terminé et TESTÉ (12/11)** : **formes orales des symboles + règle « rien sans validation »** :
+  - Nouveau `src/phenix_voice/postprocess/symbols.py` : tables FR naturel (`CORE_SYMBOL_FORMS` ~25, `AMBIGUOUS_SYMBOL_FORMS` : euro/euros/dollar/dollars/paragraphe/degré(s)/copyright/pourcentage), index tolérants en mémoire (`command_keys`), substitution multi-mots fenêtres glissantes, typographie française contextuelle (`% : ; ! ?` espacés des deux côtés, `€ £ § ® °` espace avant, **`@` collé en contexte e-mail détecté**), `SpokenFormStore` (`user_data/spoken_forms.json`, ajout : bouton « 🔑 + Forme orale » du volet de correction → `add_spoken_form_from_correction()`), `spelling_symbol()` pour le mode épellation (« point » → `.`, « arobase » → `@`… → e-mail en épellation).
+  - `punctuation.py` : champs `symbol_form/symbol_char/symbol_choices` dans `ProcessedUtterance`, appel en fin d'étape 5 (après `SPOKEN_PUNCTUATION_RULES`), `_post_process()` commun texte/variante ; `text_to_nato_spelling()` gère les symboles.
+  - `main.py` : branche DICTATION → popup choix symbole (alternatives complètes `[symbole, mot]`, voix « choix un/deux »), masquage auto de la popup.
+  - **Règle validée par l'utilisateur (12/11)** : **« Choisir un/deux/trois » (voix OU clic) n'INSÈRE PLUS RIEN** : l'alternative est proposée **dans le champ** de correction, insertion seulement après « Valider la correction » / [Appliquer] — l'utilisateur a toujours le droit de changer d'avis ou de se tromper. (`apply_correction_choice()` devient proposition + log `correction_choice_proposed`, `applied=False`.)
+  - Tests : nouveau `tests/test_symbols.py` (10 tests) ; suite complète → **19 passed, 3 deselected**.
+- **Remarques utilisateur à traiter ENSUITE (12/11)** :
+  1. **9 alternatives de correction au lieu de 3** (d'où l'idée — déjà validée le 12/11 — de **fenêtres de correction SÉPARÉES** : la barre HUD 920 px est trop étroite pour 9 choix + champ). À faire : `num_alternatives` STT 4→8, `ranked_alternatives[:8]`, stockage `[:9]`, `CHOOSE_MAP` étendu à « Choisir quatre…neuf », fenêtre de correction distincte (alternatives + champ + validation + mode apprendre + « + Forme orale »).
+  2. **Bouton « effacer sans apprendre » trop petit pour afficher tout son texte** (libellé coupé) — à clarifier/ériger (argeur de la barre, taille des boutons ou libellé).
 - **Décisions design prises (12/11, à implémenter ensuite)** :
-  1. **Fenêtres de correction SÉPARÉES** (même si elles cachent le texte en cours d'édition) — l'utilisateur préfère ne pas être limité en place d'affichage ; le HUD/correction peut s'ouvrir en fenêtre distincte.
+  1. **Fenêtres de correction SÉPARÉES** (voir remarque 1 ci-dessus).
   2. **« C'était une commande » → panneau dédié** : afficher la **liste des commandes possibles triées par proximité phonétique** (la plus proche en premier), dans la fenêtre de correction séparée.
-  3. **Formes orales de symboles/mots** (« virgule » → `,`, etc., façon Dragon) pour dicter plus facilement dans les commandes et la dictée — à concevoir (s'appuyer sur `SPOKEN_PUNCTUATION_RULES`).
-  4. **Inspiration aide Dragon** : `C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual` (consulter, **ne pas recopier**).
+  3. **Inspiration aide Dragon** : `C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual` (consulter, **ne pas recopier**).
 - **À faire ensuite, dans l'ordre** :
-  1. Commit+push du correctif « C'était une commande » + JOURNAL + maj §4.
-  2. Formes orales des symboles (« virgule »…) — proposer choix via outil `question`.
-  3. Fenêtre de correction séparée + liste des commandes triée par proximité phonétique pour « C'était une commande ».
+  1. Commit+push du jalon « formes orales + proposition-pré-validation » (tests 19 passed).
+  2. **9 choix + fenêtre de correction séparée + taille du bouton « sans apprendre »** (remarques utilisateur 12/11).
+  3. Panneau « C'était une commande » trié par proximité phonétique.
   4. Test utilisateur en direct ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).
   5. Correction sur textes longs (UI Automation + multi-segments) → Studio/rollback → LoRA.
 - **Pièges à connaître pour la reprise** : ne pas définir `PHENIX_INJECTION_PATH` en permanence (diagnostic uniquement) ; le banc `tools/injection_bench.py` ferme les applications de test en début/fin de série (Bloc-notes compris, en force) ; le Bloc-notes Win11 restaure sa session au lancement (le banc efface le document témoin de toute façon) ; lecture du texte reçu = presse-papier vidé avant chaque copie ; quota gratuit = prendre son temps, réserver les ~6 % payants aux blocages impossibles.

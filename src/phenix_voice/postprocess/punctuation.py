@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 import re
 from typing import Iterable, Mapping, TypeVar
 
@@ -11,6 +12,11 @@ from phenix_voice.postprocess.rules import (
     PhoneticRuleEngine,
     command_keys,
     normalize_key,
+)
+from phenix_voice.postprocess.symbols import (
+    SpokenFormStore,
+    apply_symbol_forms,
+    spelling_symbol,
 )
 
 _T = TypeVar("_T")
@@ -46,6 +52,10 @@ class ProcessedUtterance:
     mapped_text: str = ""
     choice_index: int = 0
     target_arg: str = ""
+    # Formes orales de symboles ambiguës (« euro » → « € ») : popup de choix façon Dragon
+    symbol_form: str = ""  # forme dictée (titre de la popup)
+    symbol_char: str = ""  # symbole inséré (libellé « choix un »)
+    symbol_choices: list[str] | None = None  # alternatives complètes [symbole, mot dicté]
 
 
 # Commandes dédiées Phénix Voice (sans conflit avec « Écoute / Au repos » de Dragon)
@@ -431,6 +441,16 @@ def text_to_nato_spelling(raw_text: str) -> str:
             i += 3
             continue
 
+        # Symboles dictés (« point », « virgule », « arobase », « astérisque »…) —
+        # insertion littérale pour faciliter les adresses e-mail en mode épellation.
+        # Les formes ambiguës (« euro »…) y prennent le symbole d'office ;
+        # « mot euro » reste disponible pour écrire le mot littéral.
+        sym = spelling_symbol(tok)
+        if sym is not None:
+            out.append(sym)
+            i += 1
+            continue
+
         if tok in NATO_ALPHABET:
             out.append(NATO_ALPHABET[tok])
         elif t_compact in NATO_ALPHABET:
@@ -454,9 +474,16 @@ class HybridPunctuationProcessor:
         self,
         rule_engine: PhoneticRuleEngine | None = None,
         enable_strict_dictionary: bool = False,
+        spoken_forms_path: str | Path | None = None,
     ) -> None:
         self.rule_engine = rule_engine or PhoneticRuleEngine()
         self.enable_strict_dictionary = enable_strict_dictionary
+        # Dictionnaire personnel de formes orales (« si tu entends A, écris B »)
+        self.spoken_forms = (
+            SpokenFormStore(spoken_forms_path)
+            if spoken_forms_path is not None
+            else SpokenFormStore()
+        )
         self._after_sentence_end: bool = True
 
     def reset_context(self) -> None:
@@ -628,6 +655,9 @@ class HybridPunctuationProcessor:
         # On conserve la forme dictée dans une variable d'entrée pour les règles de ponctuation.
         text_for_rules = re.sub(r"[ \t]*[.!?,;:»…]+[ \t]*$", "", text)
         text = text_for_rules
+        # Dictionnaire personnel de formes orales (« si tu entends A, écris B ») :
+        # prioritaire, appliqué sur la forme dictée brute avant les règles générales.
+        text = self.spoken_forms.apply(text)
         for pattern, replacement in SPOKEN_PUNCTUATION_RULES:
             text = pattern.sub(replacement, text)
 
@@ -643,15 +673,32 @@ class HybridPunctuationProcessor:
         text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
 
-        # Ponctuation automatique du modèle (Whisper) : ne pas forcer un point/virgule final
-        # sur un groupe de mots inachevé. On conserve la ponctuation uniquement si elle a été dictée explicitement.
-        if not explicit_spoken_punct:
-            text = _strip_auto_terminal_punctuation(text)
+        # Formes orales de symboles (« astérisque » → « * », façon Dragon) :
+        # substitution en place APRÈS les règles de ponctuation dictée (« virgule »,
+        # « deux points »… sont déjà traitées là) + typographie française contextuelle.
+        substitution = apply_symbol_forms(text)
+        text = substitution.text
 
-        if not self._after_sentence_end and text and not text.startswith(("\n", ".", ",", ")", "!", "?", ";", ":")):
-            text = " " + text
-        elif self._after_sentence_end and text and text[0].isalpha():
-            text = text[0].upper() + text[1:]
+        def _post_process(current: str) -> str:
+            # Ponctuation automatique du modèle (Whisper) : ne pas forcer un point/virgule final
+            # sur un groupe de mots inachevé. On conserve la ponctuation uniquement si elle a été dictée explicitement.
+            if not explicit_spoken_punct:
+                current = _strip_auto_terminal_punctuation(current)
+            if not self._after_sentence_end and current and not current.startswith(
+                ("\n", ".", ",", ")", "!", "?", ";", ":")
+            ):
+                current = " " + current
+            elif self._after_sentence_end and current and current[0].isalpha():
+                current = current[0].upper() + current[1:]
+            return current
+
+        text = _post_process(text)
+        # Variante « mot dicté » (popup de choix du symbole ambigu) : mêmes finitions.
+        variant_text = (
+            _post_process(substitution.variant_text)
+            if substitution.variant_text is not None
+            else None
+        )
 
         stripped_end = text.rstrip(" ")
         if stripped_end.endswith(("\n", ".", "!", "?", "...")):
@@ -665,4 +712,7 @@ class HybridPunctuationProcessor:
             text_to_inject=text,
             raw_text=raw_text,
             mapped_text=mapped,
+            symbol_form=substitution.form,
+            symbol_char=substitution.symbol_char,
+            symbol_choices=[text, variant_text] if variant_text is not None else None,
         )

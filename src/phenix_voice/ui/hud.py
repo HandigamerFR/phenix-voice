@@ -84,6 +84,8 @@ class HUDSignals(QObject):
     correction_closed = Signal()
     correction_edit_text_set = Signal(str)  # texte dicté proposé pendant correction (sans application auto)
     help_toggled = Signal(str, bool)  # (help_text, visible)
+    symbol_choice_requested = Signal(str, list)  # (forme dictée, libellés des choix 1/2)
+    symbol_choice_hidden = Signal()
 
 
 class PhenixHUD(QWidget):
@@ -104,6 +106,7 @@ class PhenixHUD(QWidget):
         on_toggle_help: Callable[[], None],
         on_quit: Callable[[], None],
         on_correction_text_changed: Callable[[str], None] | None = None,
+        on_add_spoken_form: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.on_toggle_mute = on_toggle_mute
@@ -116,6 +119,7 @@ class PhenixHUD(QWidget):
         self.on_toggle_help = on_toggle_help
         self.on_quit = on_quit
         self.on_correction_text_changed = on_correction_text_changed
+        self.on_add_spoken_form = on_add_spoken_form
         self._programmatic_edit = False
         self._drag_offset: QPoint | None = None
         self._is_noactivate = True
@@ -127,6 +131,8 @@ class PhenixHUD(QWidget):
         self.signals.correction_closed.connect(self._apply_close_correction_slot)
         self.signals.correction_edit_text_set.connect(self._apply_correction_edit_text_slot)
         self.signals.help_toggled.connect(self._apply_help_slot)
+        self.signals.symbol_choice_requested.connect(self._apply_symbol_choice_slot)
+        self.signals.symbol_choice_hidden.connect(self._apply_symbol_choice_hidden_slot)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -350,7 +356,7 @@ class PhenixHUD(QWidget):
 
         corr_header = QHBoxLayout()
         self.corr_title_label = QLabel(
-            "✏️ Correction : choisissez 1/2/3, modifiez le texte à la main, ou re-dictez directement :"
+            "✏️ Correction : choisissez 1/2/3 (proposé — à valider), modifiez le texte à la main, ou re-dictez :"
         )
         self.corr_title_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.corr_title_label.setStyleSheet("color: #38bdf8;")
@@ -391,11 +397,23 @@ class PhenixHUD(QWidget):
         self.apply_edit_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.apply_edit_btn.clicked.connect(self._on_apply_manual_clicked)
         manual_row.addWidget(self.apply_edit_btn)
+
+        # Dictionnaire personnel : ajouter « si tu entends [segment], écris [champ] »
+        self.add_form_btn = QPushButton("🔑 + Forme orale")
+        self.add_form_btn.setObjectName("helpBtn")
+        self.add_form_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.add_form_btn.clicked.connect(self._on_add_spoken_form_clicked)
+        self.add_form_btn.setToolTip(
+            "Ajouter une forme orale personnelle : le segment dicté sera écrit "
+            "comme le texte du champ (dictionnaire personnel)."
+        )
+        manual_row.addWidget(self.add_form_btn)
         corr_layout.addLayout(manual_row)
 
         self.corr_hint_label = QLabel(
-            "💡 Astuce : cliquez dans le champ pour corriger à la main, ou re-dictez la phrase complète (elle sera proposée sans être appliquée). "
-            "Validez ensuite avec [Appliquer la correction] ou dites « Valider la correction »."
+            "💡 Tout choix (voix « Choisir un/deux » ou clic) n'est qu'une PROPOSITION dans le champ : "
+            "rien n'est inséré avant validation. Cliquez dans le champ pour corriger à la main, ou re-dictez "
+            "la phrase complète, puis validez avec [Appliquer la correction] ou dites « Valider la correction »."
         )
         self.corr_hint_label.setFont(QFont("Segoe UI", 8))
         self.corr_hint_label.setStyleSheet("color: #94a3b8;")
@@ -403,6 +421,32 @@ class PhenixHUD(QWidget):
 
         self.corr_frame.setVisible(False)
         card_layout.addWidget(self.corr_frame)
+
+        # Ligne 3bis (repliée par défaut) : popup de choix de symbole (formes orales ambiguës)
+        self.symbol_frame = QFrame(self.card)
+        self.symbol_frame.setObjectName("corrFrame")
+        symbol_layout = QVBoxLayout(self.symbol_frame)
+        symbol_layout.setContentsMargins(10, 8, 10, 8)
+        symbol_layout.setSpacing(6)
+
+        self.symbol_title_label = QLabel("")
+        self.symbol_title_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        self.symbol_title_label.setStyleSheet("color: #fbbf24;")
+        symbol_layout.addWidget(self.symbol_title_label)
+
+        self.symbol_btn_row = QHBoxLayout()
+        self.symbol_btn_row.setSpacing(8)
+        self.symbol_buttons: list[QPushButton] = []
+        symbol_layout.addLayout(self.symbol_btn_row)
+
+        self.symbol_close_btn = QPushButton("✕ Garder tel quel (symbole)")
+        self.symbol_close_btn.setObjectName("quitBtn")
+        self.symbol_close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.symbol_close_btn.clicked.connect(self.hide_symbol_choice)
+        symbol_layout.addWidget(self.symbol_close_btn)
+
+        self.symbol_frame.setVisible(False)
+        card_layout.addWidget(self.symbol_frame)
 
         # Ligne 4 (repliée par défaut) : Panneau « Que puis-je dire ? »
         self.help_frame = QFrame(self.card)
@@ -471,6 +515,19 @@ class PhenixHUD(QWidget):
     def show_help(self, help_text: str, visible: bool = True) -> None:
         self.signals.help_toggled.emit(help_text, visible)
 
+    def show_symbol_choice(self, form: str, labels: list[str]) -> None:
+        """Popup de choix pour une forme orale ambiguë (« euro » → « € » ou « euro »)."""
+        self.signals.symbol_choice_requested.emit(form, list(labels))
+
+    def hide_symbol_choice(self, *_args: object) -> None:
+        """Ferme la popup de choix de symbole (idempotent, appelable depuis n'importe quel thread)."""
+        self.signals.symbol_choice_hidden.emit()
+
+    def _on_add_spoken_form_clicked(self) -> None:
+        if self.on_add_spoken_form:
+            self.on_add_spoken_form(self.correction_edit.text())
+        self._set_interactive_edit_mode(False)
+
     def _shrink_to_content(self) -> None:
         self.card.adjustSize()
         self.adjustSize()
@@ -479,6 +536,34 @@ class PhenixHUD(QWidget):
     def _apply_help_slot(self, help_text: str, visible: bool) -> None:
         self.help_label.setText(help_text)
         self.help_frame.setVisible(visible)
+        self._shrink_to_content()
+
+    def _apply_symbol_choice_slot(self, form: str, labels: list[str]) -> None:
+        # Boutons reconstruits à chaque ouverture (voix « choix un/deux » ou clic)
+        while self.symbol_btn_row.count():
+            item = self.symbol_btn_row.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.symbol_buttons = []
+        self.symbol_title_label.setText(
+            f"🔤 Forme dictée « {form} » — choisissez 1/2 (voix : « choix un / deux »), "
+            "proposé dans le champ à valider, ou gardez tel quel :"
+        )
+        for i, label in enumerate(labels[:3]):
+            btn = QPushButton(f"{i + 1}. {label}")
+            btn.setObjectName("altBtn")
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.clicked.connect(lambda _=False, n=i + 1: self.on_select_alternative(n))
+            self.symbol_btn_row.addWidget(btn)
+            self.symbol_buttons.append(btn)
+        self.symbol_frame.setVisible(True)
+        self._shrink_to_content()
+
+    def _apply_symbol_choice_hidden_slot(self) -> None:
+        if not self.symbol_frame.isVisible():
+            return
+        self.symbol_frame.setVisible(False)
         self._shrink_to_content()
 
     def _apply_state_slot(self, state_val: str) -> None:
@@ -511,9 +596,13 @@ class PhenixHUD(QWidget):
     def _apply_open_correction_slot(
         self, target_text: str, alternatives: list[str], learn_enabled: bool
     ) -> None:
+        # La popup de choix de symbole ne doit pas chevaucher le volet de correction
+        if self.symbol_frame.isVisible():
+            self.symbol_frame.setVisible(False)
         clean_target = target_text.strip()
         self.corr_title_label.setText(
-            f"✏️ Corriger « {clean_target} » — choisissez 1/2/3, modifiez à la main, ou re-dictez :"
+            f"✏️ Corriger « {clean_target} » — choisissez 1/2/3 (proposé dans le champ, à valider), "
+            "modifiez à la main, ou re-dictez :"
         )
         self._programmatic_edit = True
         try:

@@ -96,6 +96,7 @@ class PhenixVoiceController:
             on_toggle_help=self.toggle_help,
             on_quit=self.shutdown,
             on_correction_text_changed=self.set_pending_correction_text,
+            on_add_spoken_form=self.add_spoken_form_from_correction,
         )
 
         self.segmenter = BreathSegmenter(
@@ -254,10 +255,31 @@ class PhenixVoiceController:
         self._correction_open = True
         self._learn_on_correction = True
         self._pending_correction_text = last.injected_text.strip()
+        self.hud.hide_symbol_choice()
         self.hud.show_correction_panel(
             last.injected_text,
             last.alternatives[:3],
             learn_enabled=self._learn_on_correction,
+        )
+
+    def add_spoken_form_from_correction(self, written_text: str) -> None:
+        """Ajoute une forme orale personnelle depuis le volet de correction :
+        « si tu entends [segment dicté], écris [texte saisi] » (dictionnaire
+        personnel `user_data/spoken_forms.json`, prioritaire sur les règles)."""
+        last = self.shadow_buffer.last_segment
+        written = (written_text or "").strip()
+        if last is None or not written:
+            self.hud.set_transcript("[Aucune forme orale à ajouter]", 0.0)
+            return
+        heard = (last.raw_text or "").strip()
+        ok = self.processor.spoken_forms.add(heard, written)
+        if ok:
+            msg = f"[Forme orale ajoutée : « {heard} » → « {written} »]"
+        else:
+            msg = "[Forme orale non ajoutée (texte identique ou trop court)]"
+        self.hud.set_transcript(msg, 0.0)
+        self.injection_logger.log_action(
+            "spoken_form_added", heard=heard, written=written, ok=ok
         )
 
     def toggle_correction_learn_mode(self) -> None:
@@ -272,15 +294,51 @@ class PhenixVoiceController:
             )
 
     def apply_correction_choice(self, choice_1_based: int) -> None:
-        """Remplace le dernier segment par l'alternative choisie (1, 2 ou 3)."""
+        """Propose l'alternative choisie (1, 2 ou 3) dans le champ de correction.
+
+        AUCUNE insertion immédiate : la proposition reste dans le champ et
+        l'utilisateur valide ensuite explicitement (« Valider la correction »
+        ou bouton [Appliquer la correction]). Il a toujours le droit de
+        changer d'avis ou de s'être trompé.
+        """
         last = self.shadow_buffer.last_segment
         if last is None:
+            self.hud.set_transcript("[Aucun segment récent à corriger]", 0.0)
             return
         idx = choice_1_based - 1
         if idx < 0 or idx >= len(last.alternatives):
+            self.hud.set_transcript(
+                f"[Alternative {choice_1_based} indisponible]", 0.0
+            )
             return
         replacement = last.alternatives[idx]
-        self._perform_replacement(replacement, learn=self._learn_on_correction)
+        # Mémoriser la fenêtre cible (éditeur) pour pouvoir y réinjecter après validation
+        try:
+            fg = int(user32.GetForegroundWindow() or 0)
+            hud_hwnd = int(self.hud.winId()) if self.hud is not None else 0
+            if fg and fg != hud_hwnd:
+                self._correction_target_hwnd = fg
+        except Exception:
+            pass
+        self._correction_open = True
+        self._pending_correction_text = replacement
+        self.hud.show_correction_panel(
+            last.injected_text,
+            last.alternatives[:3],
+            learn_enabled=self._learn_on_correction,
+        )
+        self.hud.set_correction_edit_text(replacement)
+        self.hud.set_transcript(
+            replacement,
+            0.0,
+            f"[Alternative {choice_1_based} proposée dans le champ — validez pour insérer]",
+        )
+        self.injection_logger.log_action(
+            "correction_choice_proposed",
+            choice_index=choice_1_based,
+            text=replacement,
+            applied=False,
+        )
 
     def set_pending_correction_text(self, new_text: str) -> None:
         if self._correction_open:
@@ -332,7 +390,7 @@ class PhenixVoiceController:
                 mic_info = "<br><i>Veille vocale pendant la correction — dites <b>« Phénix écoute »</b> pour reprendre la voix, ou utilisez les boutons/souris.</i>"
             state = "<b>État : CORRECTION DU DERNIER SEGMENT</b>" + mic_info
             cmds = (
-                "• <b>« Choisir un / deux / trois »</b> ou clic souris : remplacer par l'alternative proposée<br>"
+                "• <b>« Choisir un / deux / trois »</b> ou clic : propose l'alternative dans le champ — validez avec <b>« Valider la correction »</b> ou <b>[Appliquer la correction]</b> (rien n'est inséré avant)<br>"
                 "• <b>Re-dicter la phrase</b> : propose une nouvelle correction dans le champ (PAS appliquée automatiquement)<br>"
                 "• <b>« Valider la correction »</b> (ou bouton <b>[Appliquer la correction]</b>) : appliquer explicitement la correction<br>"
                 "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle précise<br>"
@@ -358,6 +416,7 @@ class PhenixVoiceController:
                 "• Dites <b>Alpha, Bravo, Charlie…</b> pour épeler des lettres (utile en correction, en double avec le clavier)<br>"
                 "• <b>« Chiffre un / Chiffre 5 »</b> : insérer le caractère numérique (1, 5…)<br>"
                 "• <b>« En lettres un »</b> ou <b>« Mot un »</b> : insérer le mot littéral « un » (pas le chiffre)<br>"
+                "• <b>« Virgule », « Point », « Arobase », « Astérisque »…</b> : insèrent le symbole (ex. adresse e-mail : « Mot laure point arobase mot gmail »)<br>"
                 "• <b>« Espace »</b> : insérer un espace<br>"
                 "• <b>« Fin épellation »</b> ou <b>« Mode dictée »</b> : revenir à la dictée normale<br>"
                 "• <b>« Valider la correction »</b> : appliquer la correction si le volet est ouvert<br>"
@@ -378,6 +437,8 @@ class PhenixVoiceController:
                 "• <b>« Annuler sans apprendre »</b> : effacer le dernier souffle SANS apprendre (bafouillage / fausse manip)<br>"
                 "• <b>« Presser Entrée »</b> : appuyer sur Entrée<br>"
                 "• <b>« Point à la ligne »</b>, <b>« Nouveau paragraphe »</b>, <b>« Virgule »</b>, <b>« Point d'interrogation »</b> etc.<br>"
+                "• <b>« Astérisque », « Arobase », « Esperluette », « Dièse »…</b> : insèrent le symbole correspondant<br>"
+                "• Formes ambiguës <b>« Euro », « Dollar », « Paragraphe », « Pourcentage »…</b> : le symbole s'écrit d'office ; <b>« Choisir un »</b> (symbole) / <b>« Choisir deux »</b> (le mot) propose le choix dans le champ, à valider<br>"
                 + common
             )
         return f"{state}<br><br>{cmds}"
@@ -397,6 +458,7 @@ class PhenixVoiceController:
     def _perform_replacement(self, new_text: str, learn: bool) -> None:
         # Si l'utilisateur a édité manuellement dans le HUD, redonner le focus à la fenêtre cible avant d'envoyer Backspace/texte
         self._restore_correction_target_focus()
+        self.hud.hide_symbol_choice()
         old_seg, new_seg = self.shadow_buffer.replace_last(
             new_text, discard_audio=not learn
         )
@@ -416,6 +478,7 @@ class PhenixVoiceController:
     def oups_scratch_without_learning(self) -> None:
         """Efface immédiatement le dernier souffle et détruit son audio (protection anti-dérive)."""
         self._close_correction_bar()
+        self.hud.hide_symbol_choice()
         erased = self.shadow_buffer.scratch_last(discard_audio=True)
         if erased is not None:
             self.hud.set_transcript(
@@ -791,6 +854,14 @@ class PhenixVoiceController:
                     if self._spelling_mode:
                         spelled = text_to_nato_spelling(result.text)
                         inject_text = spelled
+                    # Forme orale ambiguë (« euro », « paragraphe »…) : le symbole est inséré
+                    # par défaut et une popup propose aussi le mot dicté (voix « choix un /
+                    # deux » ou clic), façon Dragon. Alternative complète = [symbole, mot].
+                    show_symbol_popup = (
+                        not self._spelling_mode
+                        and not self._correction_open
+                        and bool(processed.symbol_choices)
+                    )
                     if inject_text:
                         if self._correction_open:
                             proposed = inject_text.lstrip(" ").strip()
@@ -809,10 +880,18 @@ class PhenixVoiceController:
                                 f"[Proposition de correction{mode_tag} — cliquez « Appliquer » ou dites « Valider la correction »]",
                             )
                         else:
+                            seg_alternatives = (
+                                processed.symbol_choices
+                                if show_symbol_popup
+                                else arbitrated.ranked_alternatives[:3]
+                            )
+                            if not show_symbol_popup:
+                                # Une popup de symbole éventuellement ouverte sur un segment précédent est obsolète.
+                                self.hud.hide_symbol_choice()
                             self.shadow_buffer.inject_and_record(
                                 text_to_inject=inject_text,
                                 raw_text=result.text,
-                                alternatives=arbitrated.ranked_alternatives[:3],
+                                alternatives=seg_alternatives,
                                 audio_pcm=segment,
                             )
                             alt_preview = (
@@ -823,9 +902,28 @@ class PhenixVoiceController:
                             display_text = inject_text
                             if self._spelling_mode:
                                 alt_preview = "[Épellation]"
+                            elif show_symbol_popup:
+                                alt_preview = (
+                                    f"[Symbole « {processed.symbol_char} » — « choix un » = symbole, "
+                                    "« choix deux » = mot — proposition à valider]"
+                                )
                             self.hud.set_transcript(
                                 display_text, result.total_ms, alt_preview
                             )
+                            if show_symbol_popup:
+                                self.hud.show_symbol_choice(
+                                    processed.symbol_form,
+                                    [
+                                        f"{processed.symbol_char} (symbole)",
+                                        f"{processed.symbol_form} (mot)",
+                                    ],
+                                )
+                                self.injection_logger.log_action(
+                                    "symbol_choice_popup",
+                                    form=processed.symbol_form,
+                                    symbol=processed.symbol_char,
+                                    text=inject_text,
+                                )
                     else:
                         self.injection_logger.log_action(
                             "dictation_empty",
