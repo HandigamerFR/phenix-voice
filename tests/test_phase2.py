@@ -77,6 +77,22 @@ def test_phase2_commands_and_punctuation() -> None:
     assert sel.target_arg == "reconnaissance"
 
 
+def test_arbitrator_caps_alternatives_at_nine() -> None:
+    """La fenêtre de correction affiche 9 alternatives max (grille 3×3)."""
+    arb = PlausibilityArbitrator(enable_strict_dictionary=False)
+    alts = [f"Hypothèse alternative numéro {i} pour le texte dicté" for i in range(15)]
+    res = arb.arbitrate(
+        raw_text="Hypothèse principale pour le texte dicté",
+        alternatives=alts,
+        acoustic_confidence=0.75,
+        audio_duration_s=3.0,
+    )
+    assert len(res.ranked_alternatives) <= 9, (
+        f"{len(res.ranked_alternatives)} alternatives, plafond attendu : 9"
+    )
+    assert len(res.ranked_alternatives) > 0
+
+
 def test_calibrated_12_commands_on_user_voice(
     shared_engine: WhisperDirectMLEngine,
 ) -> None:

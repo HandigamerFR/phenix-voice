@@ -187,7 +187,7 @@ class PlausibilityArbitrator:
                 if acoustic_confidence < 0.88 or raw_plaus < 0.75:
                     return ArbitratedResult(
                         best_text=target_cmd,
-                        ranked_alternatives=candidates[:3],
+                        ranked_alternatives=candidates[:9],
                         plausibility_score=0.95,
                         was_adapted=True,
                         adaptation_reason=f"Commande isolée plausible ({raw_text!r} -> {target_cmd!r})",
@@ -200,7 +200,7 @@ class PlausibilityArbitrator:
                     target_cmd = self.command_confusions[norm_alt]
                     return ArbitratedResult(
                         best_text=target_cmd,
-                        ranked_alternatives=candidates[:3],
+                        ranked_alternatives=candidates[:9],
                         plausibility_score=0.92,
                         was_adapted=True,
                         adaptation_reason=f"Alternative commande plausible ({alt!r} -> {target_cmd!r})",
@@ -210,7 +210,7 @@ class PlausibilityArbitrator:
             if acoustic_fp_match is not None and acoustic_confidence < 0.45:
                 return ArbitratedResult(
                     best_text=acoustic_fp_match[0],
-                    ranked_alternatives=candidates[:3],
+                    ranked_alternatives=candidates[:9],
                     plausibility_score=0.90,
                     was_adapted=True,
                     adaptation_reason=f"Empreinte acoustique DTW ({acoustic_fp_match[0]!r})",
@@ -296,7 +296,7 @@ class PlausibilityArbitrator:
 
         return ArbitratedResult(
             best_text=chosen_text,
-            ranked_alternatives=final_alts[:4],
+            ranked_alternatives=final_alts[:9],
             plausibility_score=chosen_plaus,
             was_adapted=was_adapted,
             adaptation_reason=reason,

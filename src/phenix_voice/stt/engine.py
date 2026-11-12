@@ -247,7 +247,7 @@ class WhisperDirectMLEngine:
         audio_pcm: np.ndarray,
         initial_prompt: str | None = None,
         max_new_tokens: int = 96,
-        num_alternatives: int = 4,
+        num_alternatives: int = 8,
     ) -> TranscriptionResult:
         """Transcrit un segment audio 16 kHz mono float32 et génère également des alternatives proches."""
         t_start = time.perf_counter()

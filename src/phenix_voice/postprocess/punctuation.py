@@ -213,6 +213,22 @@ CHOOSE_MAP: dict[str, int] = {
     "numéro 3": 3,
 }
 
+# Choix 4 à 9 (jusqu'à 9 alternatives de correction, fenêtre séparée)
+for _word, _value in (
+    ("quatre", 4),
+    ("cinq", 5),
+    ("six", 6),
+    ("sept", 7),
+    ("huit", 8),
+    ("neuf", 9),
+):
+    CHOOSE_MAP[f"choisir {_word}"] = _value
+    CHOOSE_MAP[f"choix {_word}"] = _value
+    CHOOSE_MAP[f"numéro {_word}"] = _value
+    CHOOSE_MAP[f"choisir {_value}"] = _value
+    CHOOSE_MAP[f"choix {_value}"] = _value
+    CHOOSE_MAP[f"numéro {_value}"] = _value
+
 
 # --- Index de comparaison des commandes (dérivés EN MÉMOIRE, jamais persistés) -----
 # Les tables ci-dessus restent écrites en français naturel (accents, apostrophes).

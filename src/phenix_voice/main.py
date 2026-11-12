@@ -97,6 +97,8 @@ class PhenixVoiceController:
             on_quit=self.shutdown,
             on_correction_text_changed=self.set_pending_correction_text,
             on_add_spoken_form=self.add_spoken_form_from_correction,
+            # Fermeture de la fenêtre de correction (✕ ou titre) = annuler sans rien insérer
+            on_close_correction=self._close_correction_bar,
         )
 
         self.segmenter = BreathSegmenter(
@@ -258,7 +260,7 @@ class PhenixVoiceController:
         self.hud.hide_symbol_choice()
         self.hud.show_correction_panel(
             last.injected_text,
-            last.alternatives[:3],
+            last.alternatives[:9],
             learn_enabled=self._learn_on_correction,
         )
 
@@ -289,7 +291,7 @@ class PhenixVoiceController:
         if last is not None and self._correction_open:
             self.hud.show_correction_panel(
                 last.injected_text,
-                last.alternatives[:3],
+                last.alternatives[:9],
                 learn_enabled=self._learn_on_correction,
             )
 
@@ -324,7 +326,7 @@ class PhenixVoiceController:
         self._pending_correction_text = replacement
         self.hud.show_correction_panel(
             last.injected_text,
-            last.alternatives[:3],
+            last.alternatives[:9],
             learn_enabled=self._learn_on_correction,
         )
         self.hud.set_correction_edit_text(replacement)
@@ -390,7 +392,7 @@ class PhenixVoiceController:
                 mic_info = "<br><i>Veille vocale pendant la correction — dites <b>« Phénix écoute »</b> pour reprendre la voix, ou utilisez les boutons/souris.</i>"
             state = "<b>État : CORRECTION DU DERNIER SEGMENT</b>" + mic_info
             cmds = (
-                "• <b>« Choisir un / deux / trois »</b> ou clic : propose l'alternative dans le champ — validez avec <b>« Valider la correction »</b> ou <b>[Appliquer la correction]</b> (rien n'est inséré avant)<br>"
+                "• <b>« Choisir un … neuf »</b> ou clic : propose l'alternative dans le champ de la fenêtre de correction — validez avec <b>« Valider la correction »</b> ou <b>[Appliquer la correction]</b> (rien n'est inséré avant)<br>"
                 "• <b>Re-dicter la phrase</b> : propose une nouvelle correction dans le champ (PAS appliquée automatiquement)<br>"
                 "• <b>« Valider la correction »</b> (ou bouton <b>[Appliquer la correction]</b>) : appliquer explicitement la correction<br>"
                 "• <b>Modifier le texte dans le champ</b> puis <b>[Appliquer la correction]</b> : correction manuelle précise<br>"
@@ -431,7 +433,7 @@ class PhenixVoiceController:
                 + spelling_note
                 + "• <b>« Phénix repos »</b> : mettre en veille vocale (sans conflit avec Dragon)<br>"
                 "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
-                "• <b>« Corriger ça »</b> : ouvrir les alternatives (1/2/3) et la correction manuelle du dernier souffle<br>"
+                "• <b>« Corriger ça »</b> : ouvrir la fenêtre de correction (jusqu'à 9 alternatives + édition manuelle) du dernier souffle<br>"
                 "• <b>« C'était une commande »</b> : si une commande a été écrite à tort comme du texte (ex. « Phénix repos »), efface le segment et ouvre la correction<br>"
                 "• <b>« Effacer ça »</b> : supprimer le dernier souffle<br>"
                 "• <b>« Annuler sans apprendre »</b> : effacer le dernier souffle SANS apprendre (bafouillage / fausse manip)<br>"
@@ -614,7 +616,7 @@ class PhenixVoiceController:
                                     "conf": round(result.confidence, 2),
                                     "intent": processed.intent.value,
                                     "injected": processed.text_to_inject,
-                                    "alts": arbitrated.ranked_alternatives[:3],
+                                    "alts": arbitrated.ranked_alternatives[:9],
                                 },
                                 ensure_ascii=False,
                             )
@@ -754,7 +756,7 @@ class PhenixVoiceController:
                         if last:
                             self.hud.show_correction_panel(
                                 last.injected_text,
-                                last.alternatives[:3],
+                                last.alternatives[:9],
                                 learn_enabled=False,
                             )
                         self.injection_logger.log_action("command_executed", intent=processed.intent.value, mode="disable_learn_in_correction")
@@ -822,7 +824,7 @@ class PhenixVoiceController:
                         self.shadow_buffer.inject_and_record(
                             text_to_inject=processed.text_to_inject,
                             raw_text=result.text,
-                            alternatives=arbitrated.ranked_alternatives[:3],
+                            alternatives=arbitrated.ranked_alternatives[:9],
                             audio_pcm=segment,
                         )
                     self.hud.set_state(MicState.LISTENING)
@@ -847,7 +849,7 @@ class PhenixVoiceController:
 
                 # Dictée de texte : si le volet « Corriger ça » est ouvert, la nouvelle dictée est
                 # proposée dans le champ de correction SANS application automatique (anti-bafouillage / anti-coupure).
-                # L'utilisateur doit valider explicitement (bouton, « Valider la correction », ou choix 1/2/3).
+                # L'utilisateur doit valider explicitement (bouton, « Valider la correction », ou choix 1…9).
                 if processed.intent == VoiceIntentType.DICTATION:
                     inject_text = processed.text_to_inject
                     # Mode épellation (alphabet radio) : convertir les mots NATO en lettres, sans ponctuation auto.
@@ -883,7 +885,7 @@ class PhenixVoiceController:
                             seg_alternatives = (
                                 processed.symbol_choices
                                 if show_symbol_popup
-                                else arbitrated.ranked_alternatives[:3]
+                                else arbitrated.ranked_alternatives[:9]
                             )
                             if not show_symbol_popup:
                                 # Une popup de symbole éventuellement ouverte sur un segment précédent est obsolète.

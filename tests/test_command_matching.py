@@ -66,3 +66,39 @@ def test_dictation_is_not_grabbed_by_command_matching() -> None:
     r = proc.process("bonjour virgule comment allez-vous")
     assert r.intent == VoiceIntentType.DICTATION
     assert r.text_to_inject == "Bonjour, comment allez-vous"
+
+
+def test_choose_alt_supports_four_to_nine() -> None:
+    """9 alternatives de correction : « Choisir quatre…neuf » (et variantes chiffre/numéro)."""
+    proc = HybridPunctuationProcessor()
+    expected = {
+        "Choisir quatre": 4,
+        "choix quatre": 4,
+        "numéro quatre": 4,
+        "Choisir 4": 4,
+        "Choisir cinq": 5,
+        "choix 5": 5,
+        "Choisir six": 6,
+        "Choisir sept": 7,
+        "choisir 7": 7,
+        "Choisir huit": 8,
+        "choix huit": 8,
+        "Choisir neuf": 9,
+        "numéro 9": 9,
+    }
+    for text, index in expected.items():
+        got = proc.process(text)
+        assert got.intent == VoiceIntentType.CHOOSE_ALT, f"{text!r} -> {got.intent.value}"
+        assert got.choice_index == index, f"{text!r} -> {got.choice_index}, attendu {index}"
+
+
+def test_choose_alt_keeps_one_to_three() -> None:
+    proc = HybridPunctuationProcessor()
+    for text, index in (
+        ("Choisir un", 1),
+        ("choix deux", 2),
+        ("Choisir trois", 3),
+    ):
+        got = proc.process(text)
+        assert got.intent == VoiceIntentType.CHOOSE_ALT, f"{text!r} -> {got.intent.value}"
+        assert got.choice_index == index, f"{text!r} -> {got.choice_index}, attendu {index}"

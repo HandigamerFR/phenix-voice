@@ -1,8 +1,10 @@
-"""Barre flottante No-Focus PySide6 (HUD Phénix Voice — Phase 2+) :
-- 3 états de micro (Actif / Veille vocale « Phénix repos » / Micro Coupé F8).
-- Volet de correction Anti-Dérive : alternatives 1/2/3, édition manuelle à la souris, re-dictée vocale,
-  et séparation stricte « 🧠 Corriger & Apprendre » vs « 🛡️ Corriger SANS apprendre (Oups) ».
-- Panneau d'aide contextuel « Que puis-je dire ? » listant les commandes vocales disponibles.
+"""Interface Phénix Voice PySide6 (Phase 2+) :
+- Barre HUD flottante No-Focus : 3 états de micro (Actif / Veille vocale « Phénix repos » /
+  Micro Coupé F8), transcription, popup de choix de symbole et aide « Que puis-je dire ? ».
+- **Fenêtre de correction SÉPARÉE** (décision 12/11) : jusqu'à 9 alternatives
+  (voix « Choisir un…neuf » ou clic), champ éditable, validation explicite
+  (rien n'est inséré avant), séparation stricte « 🧠 Corriger & Apprendre » vs
+  « 🛡️ Corriger SANS apprendre (Oups) » et ajout de forme orale personnelle.
 """
 
 from __future__ import annotations
@@ -10,11 +12,12 @@ from __future__ import annotations
 import ctypes
 from enum import Enum
 from typing import Callable
-from PySide6.QtCore import QEvent, QPoint, Qt, Signal, QObject
+from PySide6.QtCore import QPoint, Qt, Signal, QObject
 from PySide6.QtGui import QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -88,10 +91,284 @@ class HUDSignals(QObject):
     symbol_choice_hidden = Signal()
 
 
+class CorrectionWindow(QWidget):
+    """Fenêtre de correction SÉPARÉE de la barre HUD (décision utilisateur 12/11).
+
+    - Jusqu'à **9 alternatives** (voix « Choisir un…neuf » ou clic, grille 3×3).
+    - Tout choix n'est qu'une **PROPOSITION dans le champ** : rien n'est inséré
+      dans le texte avant validation explicite (« Valider la correction » ou
+      [Appliquer la correction]) — l'utilisateur a toujours le droit de
+      changer d'avis ou de s'être trompé.
+    - Mode 🧠 Corriger & Apprendre / 🛡️ SANS apprendre, édition manuelle,
+      ajout de forme orale personnelle (« 🔑 + Forme orale »).
+    """
+
+    def __init__(
+        self,
+        on_select_alternative: Callable[[int], None],
+        on_toggle_learn_mode: Callable[[], None],
+        on_apply_manual_correction: Callable[[str], None],
+        on_correction_text_changed: Callable[[str], None] | None,
+        on_add_spoken_form: Callable[[str], None] | None,
+        on_close: Callable[[], None] | None,
+    ) -> None:
+        super().__init__(None)
+        self.on_select_alternative = on_select_alternative
+        self.on_toggle_learn_mode = on_toggle_learn_mode
+        self.on_apply_manual_correction = on_apply_manual_correction
+        self.on_correction_text_changed = on_correction_text_changed
+        self.on_add_spoken_form = on_add_spoken_form
+        self.on_close = on_close
+        self._programmatic_edit = False
+        self._positioned_once = False
+
+        self.setWindowTitle("Phénix Voice — Correction")
+        self.setWindowFlags(
+            Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint
+        )
+        # Ouvrir la fenêtre ne vole pas le focus de l'utilisateur ; un clic dans
+        # le champ suffit pour saisir du texte (focus restauré avant injection).
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setMinimumWidth(780)
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        self.setStyleSheet(
+            """
+            QWidget { background-color: #0f172a; }
+            QLabel { color: #f8fafc; }
+            QPushButton {
+                background-color: #1e293b;
+                color: #e2e8f0;
+                border: 1px solid #475569;
+                border-radius: 7px;
+                padding: 5px 10px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #334155;
+                border-color: #94a3b8;
+            }
+            QPushButton#altBtn {
+                background-color: #0f172a;
+                border: 1px solid #38bdf8;
+                color: #e0f2fe;
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+            QPushButton#altBtn:hover {
+                background-color: #0284c7;
+                color: white;
+            }
+            QPushButton#applyBtn {
+                background-color: #14532d;
+                border-color: #22c55e;
+                color: #dcfce7;
+            }
+            QPushButton#helpBtn {
+                background-color: #312e81;
+                border-color: #6366f1;
+                color: #e0e7ff;
+            }
+            QPushButton#quitBtn {
+                background-color: #2a1818;
+                border-color: #7f1d1d;
+                color: #fecaca;
+                padding: 5px 9px;
+            }
+            QLineEdit#corrEdit {
+                background-color: #0f172a;
+                color: #f8fafc;
+                border: 1px solid #38bdf8;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+            }
+            """
+        )
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(10, 8, 10, 8)
+        outer.setSpacing(6)
+
+        # Ligne 1 : titre + mode apprendre + fermer
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        self.title_label = QLabel("✏️ Correction")
+        self.title_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        self.title_label.setStyleSheet("color: #38bdf8;")
+        self.title_label.setWordWrap(True)
+        header.addWidget(self.title_label, stretch=1)
+
+        self.learn_mode_btn = QPushButton("🧠 Mode : Corriger & Apprendre")
+        self.learn_mode_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.learn_mode_btn.clicked.connect(self.on_toggle_learn_mode)
+        header.addWidget(self.learn_mode_btn)
+
+        self.close_btn = QPushButton("✕ Fermer")
+        self.close_btn.setObjectName("quitBtn")
+        self.close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.close_btn.clicked.connect(self._request_close)
+        header.addWidget(self.close_btn)
+        outer.addLayout(header)
+
+        # Ligne 2 : grille de jusqu'à 9 alternatives (voix « Choisir un…neuf » ou clic)
+        self.alt_grid = QGridLayout()
+        self.alt_grid.setSpacing(8)
+        self.alt_buttons: list[QPushButton] = []
+        for idx in range(9):
+            btn = QPushButton("---")
+            btn.setObjectName("altBtn")
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            btn.setMinimumHeight(32)
+            btn.clicked.connect(lambda _=False, i=idx + 1: self.on_select_alternative(i))
+            self.alt_grid.addWidget(btn, idx // 3, idx % 3)
+            self.alt_buttons.append(btn)
+        outer.addLayout(self.alt_grid)
+
+        # Ligne 3 : champ éditable + validation + forme orale
+        manual_row = QHBoxLayout()
+        manual_row.setSpacing(8)
+        self.correction_edit = QLineEdit()
+        self.correction_edit.setObjectName("corrEdit")
+        self.correction_edit.setPlaceholderText("Modifiez ici le texte à corriger...")
+        self.correction_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.correction_edit.textChanged.connect(self._on_correction_text_changed)
+        manual_row.addWidget(self.correction_edit, stretch=1)
+
+        self.apply_edit_btn = QPushButton("✅ Appliquer la correction")
+        self.apply_edit_btn.setObjectName("applyBtn")
+        self.apply_edit_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.apply_edit_btn.clicked.connect(self._on_apply_manual_clicked)
+        manual_row.addWidget(self.apply_edit_btn)
+
+        self.add_form_btn = QPushButton("🔑 + Forme orale")
+        self.add_form_btn.setObjectName("helpBtn")
+        self.add_form_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.add_form_btn.setToolTip(
+            "Ajouter une forme orale personnelle : le segment dicté sera écrit "
+            "comme le texte du champ (dictionnaire personnel)."
+        )
+        self.add_form_btn.clicked.connect(self._on_add_spoken_form_clicked)
+        manual_row.addWidget(self.add_form_btn)
+        outer.addLayout(manual_row)
+
+        # Ligne 4 : rappel de la règle « rien sans validation »
+        self.hint_label = QLabel(
+            "💡 Rien n'est inséré avant validation : un choix (voix « Choisir un…neuf » ou clic) "
+            "va dans le champ, puis validez avec [Appliquer la correction] ou « Valider la correction ». "
+            "Vous pouvez toujours changer d'avis, modifier le champ à la main, ou re-dicter la phrase."
+        )
+        self.hint_label.setFont(QFont("Segoe UI", 8))
+        self.hint_label.setStyleSheet("color: #94a3b8;")
+        self.hint_label.setWordWrap(True)
+        outer.addWidget(self.hint_label)
+
+    # --- API appelée par les signaux du HUD (thread GUI uniquement) -----------
+
+    def open_panel(
+        self, target_text: str, alternatives: list[str], learn_enabled: bool
+    ) -> None:
+        clean_target = target_text.strip()
+        count = sum(1 for a in alternatives if a and a.strip())
+        self.title_label.setText(
+            f"✏️ Corriger « {clean_target} » — choisissez 1…{max(count, 1)} "
+            "(proposition dans le champ, rien inséré avant validation) :"
+        )
+        self._programmatic_edit = True
+        try:
+            self.correction_edit.setText(clean_target)
+        finally:
+            self._programmatic_edit = False
+
+        if learn_enabled:
+            self.learn_mode_btn.setText("🧠 Mode : Corriger & Apprendre")
+            self.learn_mode_btn.setStyleSheet(
+                "background-color: #14532d; border-color: #22c55e; color: #dcfce7;"
+            )
+        else:
+            self.learn_mode_btn.setText("🛡️ Mode : SANS Apprendre")
+            self.learn_mode_btn.setStyleSheet(
+                "background-color: #7c2d12; border-color: #f97316; color: #ffedd5;"
+            )
+
+        fm = self.correction_edit.fontMetrics()
+        for i, btn in enumerate(self.alt_buttons):
+            if i < len(alternatives) and alternatives[i].strip():
+                full = alternatives[i].strip()
+                # Libellé tronqué au milieu + texte complet en infobulle
+                btn.setText(f"{i + 1}. " + fm.elidedText(full, Qt.TextElideMode.ElideMiddle, 360))
+                btn.setToolTip(full)
+                btn.setVisible(True)
+            else:
+                btn.setVisible(False)
+
+        if not self.isVisible():
+            self._ensure_position()
+            self.show()
+        self.raise_()
+
+    def set_edit_text(self, text: str) -> None:
+        """Propose un texte dans le champ (sans insertion automatique)."""
+        self._programmatic_edit = True
+        try:
+            self.correction_edit.setText(text.strip())
+        finally:
+            self._programmatic_edit = False
+
+    def close_panel(self) -> None:
+        self.hide()
+        self._programmatic_edit = True
+        try:
+            self.correction_edit.clear()
+        finally:
+            self._programmatic_edit = False
+
+    # --- Événements internes --------------------------------------------------
+
+    def _ensure_position(self) -> None:
+        if self._positioned_once:
+            return
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            self.adjustSize()
+            x = geo.x() + (geo.width() - self.width()) // 2
+            y = geo.y() + 150  # sous la barre HUD
+            self.move(x, y)
+        self._positioned_once = True
+
+    def _request_close(self) -> None:
+        if self.on_close:
+            self.on_close()
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        # Fermer la fenêtre (✕ ou titre) = annuler la correction en cours :
+        # rien n'a été inséré, l'utilisateur change simplement d'avis.
+        if self.on_close:
+            self.on_close()
+        super().closeEvent(event)
+
+    def _on_correction_text_changed(self, text: str) -> None:
+        if self._programmatic_edit:
+            return
+        if self.on_correction_text_changed:
+            self.on_correction_text_changed(text)
+
+    def _on_apply_manual_clicked(self) -> None:
+        text = self.correction_edit.text().strip()
+        if text:
+            self.on_apply_manual_correction(text)
+
+    def _on_add_spoken_form_clicked(self) -> None:
+        if self.on_add_spoken_form:
+            self.on_add_spoken_form(self.correction_edit.text())
+
+
 class PhenixHUD(QWidget):
-    """Barre flottante toujours au premier plan.
-    No-Focus (WS_EX_NOACTIVATE) par défaut pour ne jamais voler le curseur de la fenêtre cible,
-    mais devient temporairement activable quand l'utilisateur clique pour éditer manuellement une correction.
+    """Barre flottante toujours au premier plan (No-Focus / WS_EX_NOACTIVATE)
+    pour ne jamais voler le curseur de la fenêtre cible.
+    La correction vit dans une fenêtre SÉPARÉE (`CorrectionWindow`).
     """
 
     def __init__(
@@ -107,6 +384,7 @@ class PhenixHUD(QWidget):
         on_quit: Callable[[], None],
         on_correction_text_changed: Callable[[str], None] | None = None,
         on_add_spoken_form: Callable[[str], None] | None = None,
+        on_close_correction: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.on_toggle_mute = on_toggle_mute
@@ -120,7 +398,6 @@ class PhenixHUD(QWidget):
         self.on_quit = on_quit
         self.on_correction_text_changed = on_correction_text_changed
         self.on_add_spoken_form = on_add_spoken_form
-        self._programmatic_edit = False
         self._drag_offset: QPoint | None = None
         self._is_noactivate = True
 
@@ -133,6 +410,16 @@ class PhenixHUD(QWidget):
         self.signals.help_toggled.connect(self._apply_help_slot)
         self.signals.symbol_choice_requested.connect(self._apply_symbol_choice_slot)
         self.signals.symbol_choice_hidden.connect(self._apply_symbol_choice_hidden_slot)
+
+        # Fenêtre de correction SÉPARÉE (jusqu'à 9 alternatives + validation)
+        self.correction_window = CorrectionWindow(
+            on_select_alternative=on_select_alternative,
+            on_toggle_learn_mode=on_toggle_learn_mode,
+            on_apply_manual_correction=on_apply_manual_correction,
+            on_correction_text_changed=on_correction_text_changed,
+            on_add_spoken_form=on_add_spoken_form,
+            on_close=on_close_correction,
+        )
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -167,30 +454,6 @@ class PhenixHUD(QWidget):
                     GWL_EXSTYLE,
                     (ex_style & ~WS_EX_NOACTIVATE) | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
                 )
-
-    def _set_interactive_edit_mode(self, enabled: bool) -> None:
-        """Autorise temporairement le focus clavier pour saisir une correction manuelle à la souris."""
-        self._is_noactivate = not enabled
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not enabled)
-        # Retirer WindowDoesNotAcceptFocus pour que le QLineEdit reçoive le focus clavier
-        flags = self.windowFlags()
-        if enabled:
-            flags = flags & ~Qt.WindowType.WindowDoesNotAcceptFocus
-        else:
-            flags = flags | Qt.WindowType.WindowDoesNotAcceptFocus
-        self.setWindowFlags(
-            flags
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
-        )
-        self._enforce_win32_noactivate()
-        self.show()
-        if enabled:
-            self.activateWindow()
-            self.correction_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-            self.correction_edit.setFocus()
-            self.correction_edit.selectAll()
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
@@ -347,82 +610,7 @@ class PhenixHUD(QWidget):
         self.transcript_label.setWordWrap(False)
         card_layout.addWidget(self.transcript_label)
 
-        # Ligne 3 (repliée par défaut) : Volet de Correction Anti-Dérive
-        self.corr_frame = QFrame(self.card)
-        self.corr_frame.setObjectName("corrFrame")
-        corr_layout = QVBoxLayout(self.corr_frame)
-        corr_layout.setContentsMargins(10, 8, 10, 8)
-        corr_layout.setSpacing(6)
-
-        corr_header = QHBoxLayout()
-        self.corr_title_label = QLabel(
-            "✏️ Correction : choisissez 1/2/3 (proposé — à valider), modifiez le texte à la main, ou re-dictez :"
-        )
-        self.corr_title_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        self.corr_title_label.setStyleSheet("color: #38bdf8;")
-        corr_header.addWidget(self.corr_title_label, stretch=1)
-
-        self.learn_mode_btn = QPushButton("🧠 Mode : Corriger & Apprendre (Actif)")
-        self.learn_mode_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.learn_mode_btn.clicked.connect(self.on_toggle_learn_mode)
-        corr_header.addWidget(self.learn_mode_btn)
-        corr_layout.addLayout(corr_header)
-
-        self.alt_row = QHBoxLayout()
-        self.alt_row.setSpacing(8)
-        self.alt_buttons: list[QPushButton] = []
-        for idx in range(3):
-            btn = QPushButton(f"{idx + 1}. ---")
-            btn.setObjectName("altBtn")
-            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            btn.clicked.connect(lambda _=False, i=idx + 1: self.on_select_alternative(i))
-            self.alt_row.addWidget(btn)
-            self.alt_buttons.append(btn)
-
-        corr_layout.addLayout(self.alt_row)
-
-        # Édition manuelle (clavier/souris) du segment corrigé
-        manual_row = QHBoxLayout()
-        manual_row.setSpacing(8)
-        self.correction_edit = QLineEdit()
-        self.correction_edit.setObjectName("corrEdit")
-        self.correction_edit.setPlaceholderText("Modifiez ici le texte à corriger...")
-        self.correction_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.correction_edit.installEventFilter(self)
-        self.correction_edit.textChanged.connect(self._on_correction_text_changed)
-        manual_row.addWidget(self.correction_edit, stretch=1)
-
-        self.apply_edit_btn = QPushButton("✅ Appliquer la correction")
-        self.apply_edit_btn.setObjectName("applyBtn")
-        self.apply_edit_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.apply_edit_btn.clicked.connect(self._on_apply_manual_clicked)
-        manual_row.addWidget(self.apply_edit_btn)
-
-        # Dictionnaire personnel : ajouter « si tu entends [segment], écris [champ] »
-        self.add_form_btn = QPushButton("🔑 + Forme orale")
-        self.add_form_btn.setObjectName("helpBtn")
-        self.add_form_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.add_form_btn.clicked.connect(self._on_add_spoken_form_clicked)
-        self.add_form_btn.setToolTip(
-            "Ajouter une forme orale personnelle : le segment dicté sera écrit "
-            "comme le texte du champ (dictionnaire personnel)."
-        )
-        manual_row.addWidget(self.add_form_btn)
-        corr_layout.addLayout(manual_row)
-
-        self.corr_hint_label = QLabel(
-            "💡 Tout choix (voix « Choisir un/deux » ou clic) n'est qu'une PROPOSITION dans le champ : "
-            "rien n'est inséré avant validation. Cliquez dans le champ pour corriger à la main, ou re-dictez "
-            "la phrase complète, puis validez avec [Appliquer la correction] ou dites « Valider la correction »."
-        )
-        self.corr_hint_label.setFont(QFont("Segoe UI", 8))
-        self.corr_hint_label.setStyleSheet("color: #94a3b8;")
-        corr_layout.addWidget(self.corr_hint_label)
-
-        self.corr_frame.setVisible(False)
-        card_layout.addWidget(self.corr_frame)
-
-        # Ligne 3bis (repliée par défaut) : popup de choix de symbole (formes orales ambiguës)
+        # Ligne 3 (repliée par défaut) : popup de choix de symbole (formes orales ambiguës)
         self.symbol_frame = QFrame(self.card)
         self.symbol_frame.setObjectName("corrFrame")
         symbol_layout = QVBoxLayout(self.symbol_frame)
@@ -463,26 +651,9 @@ class PhenixHUD(QWidget):
         card_layout.addWidget(self.help_frame)
 
         outer.addWidget(self.card)
-        self.setFixedWidth(920)
-
-    def eventFilter(self, obj, event):  # type: ignore[override]
-        if obj is self.correction_edit:
-            if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.FocusIn):
-                if self._is_noactivate:
-                    self._set_interactive_edit_mode(True)
-        return super().eventFilter(obj, event)
-
-    def _on_correction_text_changed(self, text: str) -> None:
-        if self._programmatic_edit:
-            return
-        if self.on_correction_text_changed:
-            self.on_correction_text_changed(text)
-
-    def _on_apply_manual_clicked(self) -> None:
-        text = self.correction_edit.text().strip()
-        if text:
-            self.on_apply_manual_correction(text)
-        self._set_interactive_edit_mode(False)
+        # Barre élargie (remarque 12/11) : le bouton « 🛡️ Sans apprendre / Effacer »
+        # doit afficher tout son texte sans troncature.
+        self.setFixedWidth(1240)
 
     def _position_top_center(self) -> None:
         screen = QApplication.primaryScreen()
@@ -522,11 +693,6 @@ class PhenixHUD(QWidget):
     def hide_symbol_choice(self, *_args: object) -> None:
         """Ferme la popup de choix de symbole (idempotent, appelable depuis n'importe quel thread)."""
         self.signals.symbol_choice_hidden.emit()
-
-    def _on_add_spoken_form_clicked(self) -> None:
-        if self.on_add_spoken_form:
-            self.on_add_spoken_form(self.correction_edit.text())
-        self._set_interactive_edit_mode(False)
 
     def _shrink_to_content(self) -> None:
         self.card.adjustSize()
@@ -573,10 +739,10 @@ class PhenixHUD(QWidget):
         self.status_badge.setStyleSheet(
             f"background-color: {color}; color: white; padding: 4px 10px; border-radius: 6px;"
         )
-        # Ne pas écraser la transcription/correction visible si un panneau de correction est ouvert
+        # Ne pas écraser la transcription visible si la fenêtre de correction est ouverte
         if (
             state in (MicState.LOADING, MicState.SLEEPING, MicState.MUTED)
-            and not self.corr_frame.isVisible()
+            and not self.correction_window.isVisible()
         ):
             self.transcript_label.setText(default_hint)
 
@@ -586,8 +752,8 @@ class PhenixHUD(QWidget):
         if latency_ms > 0:
             self.latency_label.setText(f"⚡ {latency_ms:.0f} ms · AMD DirectML FP16")
         display = text.replace("\n", " ↵ ")
-        if len(display) > 85:
-            display = display[:82] + "..."
+        if len(display) > 110:
+            display = display[:107] + "..."
         if alt_info:
             self.transcript_label.setText(f"« {display} »   {alt_info}")
         else:
@@ -596,53 +762,16 @@ class PhenixHUD(QWidget):
     def _apply_open_correction_slot(
         self, target_text: str, alternatives: list[str], learn_enabled: bool
     ) -> None:
-        # La popup de choix de symbole ne doit pas chevaucher le volet de correction
+        # La popup de choix de symbole ne doit pas chevaucher la fenêtre de correction
         if self.symbol_frame.isVisible():
             self.symbol_frame.setVisible(False)
-        clean_target = target_text.strip()
-        self.corr_title_label.setText(
-            f"✏️ Corriger « {clean_target} » — choisissez 1/2/3 (proposé dans le champ, à valider), "
-            "modifiez à la main, ou re-dictez :"
-        )
-        self._programmatic_edit = True
-        try:
-            self.correction_edit.setText(clean_target)
-        finally:
-            self._programmatic_edit = False
-        if learn_enabled:
-            self.learn_mode_btn.setText("🧠 Mode : Corriger & Apprendre")
-            self.learn_mode_btn.setStyleSheet(
-                "background-color: #14532d; border-color: #22c55e; color: #dcfce7;"
-            )
-        else:
-            self.learn_mode_btn.setText("🛡️ Mode : SANS Apprendre (Annuler sans apprendre)")
-            self.learn_mode_btn.setStyleSheet(
-                "background-color: #7c2d12; border-color: #f97316; color: #ffedd5;"
-            )
-
-        for i, btn in enumerate(self.alt_buttons):
-            if i < len(alternatives) and alternatives[i].strip():
-                btn.setText(f"{i + 1}. {alternatives[i].strip()}")
-                btn.setVisible(True)
-            else:
-                btn.setVisible(False)
-
-        self.corr_frame.setVisible(True)
-        self._shrink_to_content()
+        self.correction_window.open_panel(target_text, alternatives, learn_enabled)
 
     def _apply_close_correction_slot(self) -> None:
-        self.corr_frame.setVisible(False)
-        self.correction_edit.clear()
-        self._set_interactive_edit_mode(False)
-        self._shrink_to_content()
+        self.correction_window.close_panel()
 
     def _apply_correction_edit_text_slot(self, text: str) -> None:
-        self._programmatic_edit = True
-        try:
-            self.correction_edit.setText(text.strip())
-        finally:
-            self._programmatic_edit = False
-        self._shrink_to_content()
+        self.correction_window.set_edit_text(text)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
