@@ -52,28 +52,33 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 > de `JOURNAL_DE_BORD.md` + `git status`/`git log --oneline -5` suffisent à reprendre sans mémoire.
 > Dans la même conversation, je reçois aussi l'historique (résumé de session) et je vois l'interruption.
 
-- **Dernier état stable** : `ae44eb2` poussé (formes orales symboles + proposition-pré-validation). Arbre Git : **modifs EN COURS non committées** (jalon ci-dessous, tests verts).
-- **Jalon EN COURS terminé et TESTÉ (12/11, soirée)** : **9 alternatives + fenêtre de correction SÉPARÉE + barre agrandie** :
+- **Dernier état stable** : `477f5d5` poussé (fenêtre d'épellation séparée) + cette mise à jour documentaire. Arbre Git : **propre**.
+- **Jalon TERMINÉ, TESTÉ et POUSSE (12/11, nuit) — `477f5d5`** : **fenêtre d'ÉPELLATION séparée** :
+  - `hud.py` : **nouvelle classe `SpellingWindow`** (miroir de `CorrectionWindow`) + signaux HUD (`spelling_opened/closed/text_set/text_append`) ;
+    **depuis la correction** : champ **pré-rempli avec le texte du souffle corrigé, modifiable**, chunks épelés **ajoutés** (append), **rien inséré avant validation**, boutons [🗑 Vider] + [✅ Appliquer la correction] ; **hors correction** : champ **miroir lecture seule**, texte inséré **directement dans l'éditeur** ; bouton **[🔤 Épellation]** ajouté à `CorrectionWindow`.
+  - `main.py` : `enter_spelling_mode()` / `_exit_spelling_mode()` / `set_spelling_text_from_ui()` ; **garde de routage** : en mode épellation seules passent `DICTATION` (+ conversion NATO), `EXIT_SPELLING`, `APPLY_CORRECTION` (si correction ouverte) et sécurité `MUTE/SLEEP/WAKE/HELP`, le reste ignoré loggé `spelling_command_ignored` ; branche `DICTATION` : **append** des chunks en correction + miroir, injection directe + miroir hors correction ; fermeture sur sortie/✕/veille/clôture de la correction ; **le micro F8 ne ferme pas la fenêtre (pause, décision 12/11)**.
+  - `punctuation.py` : formes de sortie **« passer en mode dictée » / « retour en mode dictée »**.
+  - Aide : 3 textes mis à jour (dictée, correction, état épellation restreint).
+  - Tests : **25 passed, 3 deselected** (+3 : formes sortie/entrée épellation, intentions autorisées) ; smoke offscreen vert (pré-rempli, édition, miroir, append, sortie) ; **banc 36/36 sans corruption**.
+- **Jalon 12/11 soir TERMINÉ, TESTÉ et POUSSE (`b8930a7`)** : **9 alternatives + fenêtre de correction SÉPARÉE + barre agrandie** :
   - `stt/engine.py` : `num_alternatives` 4→8 (seconds choix du runner-up, gratuit).
   - `plausibility.py` : `ranked_alternatives` plafonné à **9** (`candidates[:9]` ×3 + `final_alts[:9]`).
   - `main.py` : 7 sites `[:3]`/`[:4]` → `[:9]` ; aide « Choisir un … neuf » ; **`on_close_correction=self._close_correction_bar`** branché (✕/fermer = annuler, rien inséré).
   - `punctuation.py` : `CHOOSE_MAP` étendu **quatre…neuf** (formes « choisir X / choix X / numéro X / choisir N ») par boucle.
   - `hud.py` : **nouvelle classe `CorrectionWindow`** (fenêtre Tool always-on-top, `WA_ShowWithoutActivating`, grille **3×3** de boutons libellés échelonnés + infobulle texte complet, champ éditable, [Appliquer la correction], 🔑 + Forme orale, bascule 🧠/🛡️, ✕ = annuler via `closeEvent`→`on_close`, position centrée sous la barre y+150) ; **tout l'ancien volet embarqué supprimé** (`corr_frame`, `eventFilter`, `_set_interactive_edit_mode`, handlers) ; slots HUD redirigés vers la fenêtre ; **barre 920→1240 px** (libellé « 🛡️ Sans apprendre / Effacer » entier) + transcription affichée 85→110 car.
   - Tests : `test_command_matching.py` (choisir quatre…neuf + 1…3), `test_phase2.py` (arbitre ≤9) ; suite → **22 passed, 3 deselected** ; smoke HUD offscreen vert (9 boutons, pré-rempli, callback fermeture).
-- **Nouvelle demande utilisateur (12/11 soir, VALIDÉE, à implémenter ensuite)** : **fenêtre d'ÉPELLATION séparée** :
-  1. **Depuis la correction** : « Mode épellation » → fenêtre séparée n'écoutant **que** lettres / chiffres / symboles / **[espace]**, **pré-remplie avec le texte du souffle corrigé, modifiable**.
-  2. **Hors correction** : mode épellation accessible **à tout moment** ; mêmes commandes restreintes ; texte inséré **directement dans l'éditeur cible** jusqu'à commande de sortie « passer en mode dictée » (à nommer).
-  3. **Extension « N souffles précédents »** : valable aussi pour la **correction** (corriger les N souffles précédents) ; N libre, **se renseigner sur le fonctionnement Dragon** (aide locale, consultation seule) pour deviner la mécanique.
+- **Demande utilisateur (12/11 soir, VALIDÉE — points 1-2 TERMINÉS ci-dessus)** :
+  1. **Depuis la correction** : « Mode épellation » (ou bouton 🔤) → fenêtre séparée n'écoutant **que** lettres / chiffres / symboles / **[espace]**, **pré-remplie avec le texte du souffle corrigé, modifiable**.
+  2. **Hors correction** : mode épellation accessible **à tout moment** ; mêmes commandes restreintes ; texte inséré **directement dans l'éditeur cible** jusqu'à commande de sortie « passer en mode dictée ».
+  3. **Extension « N souffles précédents »** (À FAIRE ENSUITE) : valable aussi pour la **correction** (corriger les N souffles précédents) ; N libre, **se renseigner sur le fonctionnement Dragon** (aide locale, consultation seule) pour deviner la mécanique.
 - **Décisions design prises (12/11, à implémenter ensuite)** :
   1. **« C'était une commande » → panneau dédié** : afficher la **liste des commandes possibles triées par proximité phonétique** (la plus proche en premier), dans la fenêtre de correction séparée.
   2. **Inspiration aide Dragon** : `C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual` (consulter, **ne pas recopier**).
 - **À faire ensuite, dans l'ordre** :
-  1. Commit+push du jalon « 9 choix + fenêtre de correction séparée + barre 1240 » (tests 22 passed).
-  2. **Fenêtre d'épellation séparée** (demande validée ci-dessus, 3 points).
-  3. Panneau « C'était une commande » trié par proximité phonétique.
-  4. Recherche « N souffles précédents » dans l'aide Dragon (consultation seule).
-  5. Test utilisateur en direct ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).
-  6. Correction sur textes longs (UI Automation + multi-segments) → Studio/rollback → LoRA.
+  1. Extension « N souffles précédents » (correction aussi) — recherche dans l'aide Dragon (consultation seule).
+  2. Panneau « C'était une commande » trié par proximité phonétique.
+  3. Test utilisateur en direct (dont la fenêtre d'épellation) ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).
+  4. Correction sur textes longs (UI Automation + multi-segments) → Studio/rollback → LoRA.
 - **Pièges à connaître pour la reprise** : ne pas définir `PHENIX_INJECTION_PATH` en permanence (diagnostic uniquement) ; le banc `tools/injection_bench.py` ferme les applications de test en début/fin de série (Bloc-notes compris, en force) ; le Bloc-notes Win11 restaure sa session au lancement (le banc efface le document témoin de toute façon) ; lecture du texte reçu = presse-papier vidé avant chaque copie ; quota gratuit = prendre son temps, réserver les ~6 % payants aux blocages impossibles.
 
 ### 5. Règle de Fin de Session

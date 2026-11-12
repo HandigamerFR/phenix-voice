@@ -248,3 +248,43 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 1. **Test utilisateur en direct** : dictée longue dans le Bloc-notes et dans d'autres applications, corrections (« Corriger ça », choix 1/2/3), « C'était une commande » ; vérifier `send_path` dans `logs/injection_trace.jsonl` (`messages` en Bloc-notes, `sendinput` ailleurs).
 2. Suites du diagnostic ouvertes : segments reconnus mais non injectés (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052`) et `select_word not_found` sur « ça corrigez ça ».
 3. Correction sur textes longs (UI Automation/TextPattern + historique multi-segments, jusqu'à 9 alternatives), outils de rollback/purge, puis pipeline LoRA local DirectML.
+
+
+---
+
+## Session 8 — 11/12 Novembre 2026 (soirée & nuit) : « C'était une commande », formes orales des symboles, fenêtre de correction à 9 choix & fenêtre d'épellation séparée
+
+### 1. Correctif « C'était une commande » (commit `9a1c4aa`)
+- Les commandes à apostrophe (notamment **« C'était une commande »**) n'étaient reconnues que si le STT rendait l'apostrophe droite : la clé de comparaison dérivée (`command_keys`) ignore désormais apostrophes droites/typographiques et accents **sans jamais modifier les tables en français naturel** (règle de design confirmée : tolérance en mémoire uniquement, jamais persistée ni affichée).
+- Tests : formes naturelles, dégradées, casse et ponctuation toutes acceptées.
+
+### 2. Formes orales des symboles + règle « rien sans validation » (commit `ae44eb2`)
+1. **Nouveau `src/phenix_voice/postprocess/symbols.py`** : tables FR naturelles (~25 formes cœur : virgule, point, point-virgule, deux-points, parenthèses, guillemets, tiret, espace insécable…) + formes **ambiguës** (euro, dollar, paragraphe, degré, copyright, pourcentage) ; index tolérants en mémoire ; substitution multi-mots à fenêtre glissante ; **typographie française contextuelle** (`% : ; ! ?` espacés des deux côtés, `€ £ § ® °` espace avant, `@` collé en contexte e-mail détecté) ; `SpokenFormStore` (`user_data/spoken_forms.json`) alimenté par le bouton **« 🔑 + Forme orale »** ; `spelling_symbol()` pour le mode épellation.
+2. **Règle validée par l'utilisateur** : **« Choisir un/deux/trois » (voix OU clic) n'insère plus rien** — l'alternative est proposée **dans le champ** de correction, insertion seulement après **« Valider la correction »** / **[Appliquer la correction]** (l'utilisateur a toujours le droit de changer d'avis ou de se tromper). `apply_correction_choice()` est devenu une proposition loguée (`applied=False`).
+3. `tests/test_symbols.py` (10 tests) → suite **19 passed, 3 deselected**.
+
+### 3. Fenêtre de correction SÉPARÉE à 9 alternatives + barre 1240 px (commit `b8930a7`)
+1. **9 alternatives** : STT `num_alternatives` 4→8 (second choix du runner-up, gratuit), arbitre `ranked_alternatives` plafonné à **9**, stockage `[:9]` (7 sites), `CHOOSE_MAP` étendu **« Choisir quatre…neuf »** (variantes « choix X / numéro X / choisir N »).
+2. **Nouvelle classe `CorrectionWindow`** (`ui/hud.py`) : fenêtre Tool always-on-top sans vol de focus (`WA_ShowWithoutActivating`), grille **3×3** de boutons libellés échelonnés + infobulle texte complet, champ éditable, **[Appliquer la correction]**, 🔑 + Forme orale, bascule 🧠/🛡️ ; **✕ = annuler sans rien insérer** (`closeEvent` → `on_close` → `_close_correction_bar`). L'ancien volet embarqué dans la barre a été supprimé (moins de code, plus d'espace).
+3. **Barre HUD 920→1240 px** : libellé **« 🛡️ Sans apprendre / Effacer »** entier (demande utilisateur), transcription affichée 85→110 car.
+4. Tests + smoke offscreen (9 boutons, pré-rempli, callback de fermeture) → **22 passed, 3 deselected**.
+
+### 4. Fenêtre d'ÉPELLATION séparée (commit `477f5d5`, demande validée le 12/11)
+1. **Nouvelle classe `SpellingWindow`** (`ui/hud.py`, miroir de `CorrectionWindow`) + signaux HUD dédiés (`spelling_opened/closed/text_set/text_append`, tous thread-safe) :
+   - **Depuis la correction** (« Mode épellation » ou nouveau bouton **[🔤 Épellation]** de la fenêtre de correction) : champ **pré-rempli avec le texte du souffle corrigé et modifiable**, lettres dictées **ajoutées** au texte (append, pas remplacement), **rien inséré dans l'éditeur avant validation** ; boutons [🗑 Vider] et [✅ Appliquer la correction].
+   - **Hors correction** : accessible à tout moment, champ en **miroir lecture seule**, texte épelé inséré **directement dans l'éditeur cible** jusqu'à la sortie.
+2. **Commandes restreintes** : garde de routage dans `_stt_worker_loop` — en mode épellation seules passent `DICTATION` (convertie alphabet radio), `EXIT_SPELLING`, `APPLY_CORRECTION` (si correction ouverte) et la sécurité (`MUTE/SLEEP/WAKE/HELP`) ; **toute autre commande est ignorée et journalisée** (`spelling_command_ignored`) — pas d'effet de bord caché.
+3. **Sortie** : « Fin épellation », **« Passer en mode dictée »** / « Retour en mode dictée » (nouvelles formes dans `SPELLING_EXIT_COMMANDS`), ✕ de la fenêtre, veille vocale (F9/« Phénix repos ») et arrêt de l'application. **Décision** : la coupure micro (F8/« Couper Phénix ») **ne referme pas** la fenêtre — elle sert de pause et le mode reprend au réveil du micro.
+4. **Clôture liée** : appliquer ou annuler la correction ferme aussi la fenêtre d'épellation ouverte depuis celle-ci (`_close_correction_bar` → `_exit_spelling_mode`).
+5. Aide contextuelle mise à jour (dictée, correction, état épellation : liste des seules commandes écoutées).
+
+### 5. Validations (12/11, nuit)
+- `pytest -q tests/test_symbols.py tests/test_phase1.py tests/test_phase2.py tests/test_command_matching.py -k "not amd_gpu_transcription and not user_voice_calibration and not calibrated_12_commands"` → **25 passed, 3 deselected** (+3 tests : formes de sortie épellation, formes d'entrée, intentions autorisées en mode épellation).
+- Smoke offscreen `smoke_hud.py` : 9 alternatives, pré-rempli, barre 1240, callbacks de fermeture, **fenêtre d'épellation** (pré-remplissage, édition, miroir lecture seule, append, sortie) → **OK**.
+- Banc d'injection `tools/injection_bench.py` → **36/36 conformes, aucune corruption** (tk 24/24, Bloc-notes 12/12), balayage de début/fin de série OK.
+
+### 6. Prochaine étape prévue
+1. **Extension « N souffles précédents »** (correction aussi, pas seulement l'épellation) : se renseigner sur la mécanique Dragon via son **aide locale** (`C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual`, consultation seule, aucune copie).
+2. Panneau **« C'était une commande »** : liste des commandes triée par **proximité phonétique** dans la fenêtre de correction.
+3. Test utilisateur en direct de la fenêtre d'épellation ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).
+4. Correction sur textes longs (UI Automation + multi-segments) → Phénix Studio/rollback → pipeline LoRA local DirectML.
