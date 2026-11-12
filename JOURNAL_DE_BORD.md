@@ -283,7 +283,14 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 - Smoke offscreen `smoke_hud.py` : 9 alternatives, pré-rempli, barre 1240, callbacks de fermeture, **fenêtre d'épellation** (pré-remplissage, édition, miroir lecture seule, append, sortie) → **OK**.
 - Banc d'injection `tools/injection_bench.py` → **36/36 conformes, aucune corruption** (tk 24/24, Bloc-notes 12/12), balayage de début/fin de série OK.
 
-### 6. Prochaine étape prévue
+### 6. Recherche « N souffles précédents » dans l'aide Dragon (consultation seule, 12/11 nuit)
+- Source : `C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual\Content` (pages HTML extraites, aucune copie de code — recueil de mécanique uniquement).
+- **Réponse : Dragon ne compte pas en « souffles » mais en unités de texte, plafonné à 20.** Formes relevées : **« Sélectionner les <1-20> mots précédents »** (idem caractères / lignes / paragraphes ; variantes « arrière », « derniers »), **« Effacer les <2-20> mots précédents »**, « Effacer le dernier mot », « Sélectionner le dernier mot » ; « Effacer ça » / « Annuler ça » pour le dernier texte dicté.
+- Correction ciblée : « Corriger ça », **« Corriger <texte> »**, **« Corriger de <texte> à <texte> »** (France), « Sélectionner ça » / « Sélectionner de X à Y », **« Epeler ça »** → fenêtre d'épellation.
+- **Convergence** : l'option Dragon « Les commandes "Corriger" affichent la fenêtre d'épellation » valide notre implémentation du jour (fenêtre d'épellation ouverte depuis la correction).
+- **Proposition Phénix (à valider)** : « Corriger les <N> souffles précédents » (N en mots 1…9, plafond 25 = capacité réelle du `deque` du `ShadowBuffer`) → texte des N derniers segments concaténé dans la fenêtre de correction ; validation → remplacement du bloc + fusion des segments. Reporté après le panneau « C'était une commande ».
+
+### 7. Prochaine étape prévue
 1. **Extension « N souffles précédents »** (correction aussi, pas seulement l'épellation) : se renseigner sur la mécanique Dragon via son **aide locale** (`C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual`, consultation seule, aucune copie).
 2. Panneau **« C'était une commande »** : liste des commandes triée par **proximité phonétique** dans la fenêtre de correction.
 3. Test utilisateur en direct de la fenêtre d'épellation ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).

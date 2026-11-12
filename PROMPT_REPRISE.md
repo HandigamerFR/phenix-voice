@@ -75,7 +75,11 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
   1. **« C'était une commande » → panneau dédié** : afficher la **liste des commandes possibles triées par proximité phonétique** (la plus proche en premier), dans la fenêtre de correction séparée.
   2. **Inspiration aide Dragon** : `C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual` (consulter, **ne pas recopier**).
 - **À faire ensuite, dans l'ordre** :
-  1. Extension « N souffles précédents » (correction aussi) — recherche dans l'aide Dragon (consultation seule).
+  1. Extension « N souffles précédents » (correction aussi) — **RECHERCHE AIDE DRAGON FAITE (12/11, nuit, consultation seule)** :
+     - **Réponse : chez Dragon, N n'existe pas en « souffles » mais en unités de texte, plafonné à 20.** Formes exactes (aide fra, `Content\WorkingWithText\`) : **« Sélectionner les <1-20> mots précédents »** (aussi caractères/lignes/paragraphes, variantes « arrière » / « derniers »), **« Effacer les <2-20> mots précédents »**, « Effacer le dernier mot », « Sélectionner le dernier mot » ; suppression du dernier texte : « Effacer ça » / « Annuler ça ».
+     - Correction ciblée : « Corriger ça » (dernier texte), **« Corriger <texte> »** (cherche l'occurrence), **« Corriger de <texte> à <texte> »** (version France), « Sélectionner ça/de X à Y » puis correction ; **« Epeler ça »** ouvre la fenêtre d'épellation sur la sélection.
+     - **Convergence design** : option Dragon « Les commandes "Corriger" affichent la fenêtre d'épellation » ≈ notre fenêtre d'épellation depuis la correction (déjà implémentée).
+     - **Proposition Phénix (à valider avec l'utilisateur)** : commande « Corriger les <N> souffles précédents » (N en mots, 1…9 via table type `CHOOSE_MAP`, plafond 25 = taille réelle du `deque` du `ShadowBuffer`) → concatène `injected_text` des N derniers segments dans la fenêtre de correction ; validation → remplacement du bloc dans l'éditeur + fusion des N segments. Reporté après le panneau « C'était une commande ».
   2. Panneau « C'était une commande » trié par proximité phonétique.
   3. Test utilisateur en direct (dont la fenêtre d'épellation) ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).
   4. Correction sur textes longs (UI Automation + multi-segments) → Studio/rollback → LoRA.
