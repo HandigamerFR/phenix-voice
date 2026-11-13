@@ -295,3 +295,43 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 2. Panneau **« C'était une commande »** : liste des commandes triée par **proximité phonétique** dans la fenêtre de correction.
 3. Test utilisateur en direct de la fenêtre d'épellation ; puis anomalies ouvertes (`dictation_empty` : `seg_20261111_145733`, `_145914`, `_150052` ; `select_word not_found`).
 4. Correction sur textes longs (UI Automation + multi-segments) → Phénix Studio/rollback → pipeline LoRA local DirectML.
+
+---
+
+## Session 9 - 13 Novembre 2026 : Analyse forensique de la session du 12/11 soir, Étape 1 (cohérence : ponctuation auto + casse + classification texte/acoustique) & génération des 9 choix
+
+### 1. Analyse forensique de la session de test du 12/11 soir (demande prioritaire de l'utilisateur — TERMINÉE)
+- **Périmètre réel** : blocs 22h (47) + 23h (46) = **93 souffles** (le bloc « 21h » au format `fp` vient du **10/11**, exclu). Scripts dans `C:\Users\laure\AppData\Local\Temp\opencode\` (`scope_2223.py` + `analyze_*.py`), sources = `logs/dictation_debug.jsonl`, `logs/injection_trace.jsonl`, `logs/session_trace.jsonl`.
+- **Dysfonctionnements confirmés** (rapport rendu à l'utilisateur) :
+  1. **9 alternatives jamais atteintes** : distribution 1→12, 2→23, **3→50**, 4→5, 5→2, 6→1 (générateur = substitutions unitaires seules, seuil 0.04 → plafond ~3) ;
+  2. **aucun signal « moins de 9 »** (grille de boutons `---` sans explication) ;
+  3. **4 échecs d'épellation 23:32:13–24** : STT brut `"Veilk !"`, `"Make."`, `"Bank."` ×2 → prononciations NATO non transcrites en mots NATO (`text_to_nato_spelling` jette les mots inconnus) → `dictation_empty` ;
+  4. **« Mode épellation, mode épellation. » raté (23:35:09)** : énoncé doublé → appariement exact cassé → classé `dictation` et **injecté comme texte** ;
+  5. **`select_word not_found` ×2 (23:26:56)** : « Corriger ça, Corriger ça. » → même cause (énoncé doublé) ;
+  6. **latence** : médiane **498 ms**, p90 673, max 969 ; 26/133 > 600 ms (souffles longs 6–7 s) ;
+  7. **commandes ratées** : 22:36:30 « Écoute, » dictée ; 22:48:28 « A la ligne… » injectée comme texte (conf 0.52) ; 23:13:14–22 deux souffles vides ; 22:47:27 « Oups, c'est le fourger. » classée dictée.
+  - **Sain** : 0 exception, 0 envoi partiel, bench Notepad 12/12, `revise_cmd` OK.
+- **Report** : ces anomalies ouvrent le diagnostic de l'étape 2 (§ 5 ci-dessous).
+
+### 2. Étape 1 — nouvelle couche `postprocess/coherence.py` (non suivie)
+- **`strip_auto_punctuation`** : retire **TOUTE** ponctuation/symbole auto-ajouté par le modèle (séparateurs de chiffres `[.,:/]` protégés via placeholders `\x01`) ; seules les formes dictées (« virgule », « point »…) sont écrites. Fini « Comment vas-tu ? » → « ? » parasite et « ? ? ».
+- **`adapt_chunk_to_context`** : casse intelligente — majuscule **uniquement** au début du texte, après retour à la ligne et après `. ! ? …` ; minuscule sinon ; espace de liaison ajouté seulement s'il manque (fin du « chaque souffle en majuscule » et du « mot.Nouveau »).
+- **`is_textual_only_correction`** : classe une correction en **règle de texte** (ponctuation/casse/espace égaux après normalisation, `\W_` retiré + `casefold`, accents significatifs, vide → False) vs **erreur acoustique**.
+- **Refactor `punctuation.py`** : `_format_core(mapped)` (cœur sans mutation d'état), `format_dictation(mapped, previous_text)` (contexte + mémorisation `_last_produced`), `format_alternatives(alts, previous_text, chosen_text)` (mêmes règles, choix retenu exclu, dédoublonnage `casefold`, **aucune mutation**) ; `process()` étape-5 délègue à `format_dictation`.
+- **`main.py`** : `previous_text=recent_ctx` transmis au routeur ; nettoyage des alternatives juste après l'arbitrage via `dataclasses.replace` + `format_alternatives` (couvre les 3 sites `[:9]` en aval) ; classification des corrections : `kind="textual"` jsonl **sans WAV** + tag « ✏️ Corrigé — règle texte (pas d'apprentissage audio) » / « 🛡️ Corrigé SANS apprendre (règle texte) », acoustique inchangé (`kind="acoustic"`, snapshot + WAV).
+
+### 3. 9 alternatives réellement atteintes + signal explicite
+- **`stt/engine.py`** : nouveau helper **`build_alternatives(generated_tokens, runner_up_candidates, decode, main_text, num_alternatives)`** — substitutions unitaires d'abord (ratio décroissant), puis **combinaisons de DEUX substitutions** pour remplir la grille 3×3 ; dédoublonnage `casefold` ; `decode` injecté (testable sans GPU). Seuil runner-up **0.04 → 0.01**. Quota `num_alternatives` 8 → **9** (la grille fait 3×3).
+- **`ui/hud.py`** : nouveau **`alt_count_label`** dans `CorrectionWindow` — **✅ 9/9 choix disponibles** (vert) / **⚠️ X/9 choix seulement — le système n'a pas trouvé plus d'alternatives pour ce souffle** (ambre) / **❌ 0/9 choix — aucune alternative trouvée : modifiez le champ à la main ou re-dictez la phrase** (rouge). Exigence « signaler quand il y a moins de 9 » donc satisfaite.
+
+### 4. Validations (13/11)
+- **`pytest -q tests/ -k "not amd_gpu_transcription and not user_voice_calibration and not calibrated_12_commands"` → 47 passed, 3 deselected** (+10 nouveaux : `tests/test_alternatives.py` ×5 sur `build_alternatives` — unitaires puis paires, quota 9, dédoublonnage/exclusion du principal, sans seconds choix, paires seulement si insuffisant ; `tests/test_coherence.py` +5 — `format_dictation` == sortie `process`, mêmes règles pour les alternatives, exclusion/dédoublonnage, pas de mutation du contexte, adaptation en milieu de phrase ; `test_phase1.py` r2 mis à jour → `" Je teste Phénix Voice.\n"`).
+- **Smoke offscreen** : import `phenix_voice.main` + `is_textual_only_correction` + `build_alternatives` OK ; **`CorrectionWindow` réelle** : 3 alts → ⚠️ 3/9, 10 alts → ✅ 9/9 (plafonné), 0 alt → ❌ 0/9.
+
+### 5. Roadmap validée par l'utilisateur (Option 1) & prochaine étape
+1. ✅ **Étape 1** (ponctuation auto retirée + casse intelligente + classification texte/acoustique) — **ci-dessus**.
+2. **Étape 2** : diagnostic d'épellation NATO (transcrire les 4 WAV `seg_20261112_233213/17/20/24.wav`, étendre les variantes NATO, prompt STT du mode épellation), fix énoncés doublés (« Mode épellation » ×2, « Corriger ça » ×2) + **commandes de navigation/correction en mode épellation** (curseur gauche/droite, suppr caractère — nouvelles intentions + injection de touches).
+3. **Étape 3** : cohérence inter-souffles v1 complète (accords au 2ᵉ passage).
+4. **Étape 4** : panneau « C'était une commande » trié par proximité phonétique.
+5. **Étape 5** : corpus phonèmes / LoRA.
+- Reporté : banc Tk à relancer avec l'accord de l'utilisateur (fenêtre témoin minimisée par erreur — SendInput exige le premier plan, ce n'est pas un bug).
