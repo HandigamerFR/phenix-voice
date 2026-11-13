@@ -33,9 +33,10 @@ def test_hybrid_punctuation_and_commands() -> None:
     assert r1.text_to_inject == "Bonjour, comment allez-vous ?"
 
     # 2. Enchaînement d'un second souffle sur la même ligne (nouvelle phrase après '?')
+    #    → espace de liaison + majuscule (plus de « ?Je » ni de majuscule forcée ailleurs)
     r2 = proc.process("je teste Phénix Voice point à la ligne")
     assert r2.intent == VoiceIntentType.DICTATION
-    assert r2.text_to_inject == "Je teste Phénix Voice.\n"
+    assert r2.text_to_inject == " Je teste Phénix Voice.\n"
 
     # 3. Commandes d'annulation et de mise en veille
     r3 = proc.process("Annuler sans apprendre")

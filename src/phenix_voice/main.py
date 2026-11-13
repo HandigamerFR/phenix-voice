@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 import queue
 import sys
@@ -31,6 +32,7 @@ from phenix_voice.audio.fingerprints import AcousticCommandProtector
 from phenix_voice.audio.vad import BreathSegmenter
 from phenix_voice.os_control.hotkeys import GlobalInputMonitor
 from phenix_voice.os_control.shadow_buffer import ShadowBuffer
+from phenix_voice.postprocess.coherence import is_textual_only_correction
 from phenix_voice.postprocess.plausibility import PlausibilityArbitrator
 from phenix_voice.postprocess.punctuation import (
     HybridPunctuationProcessor,
@@ -488,7 +490,8 @@ class PhenixVoiceController:
             state = "<b>État : ÉCOUTE ACTIVE (dictée libre)</b>"
             cmds = (
                 "• <b>Dictée libre</b> : parlez normalement, le texte s'écrit dans la fenêtre active<br>"
-                "• La ponctuation finale n'est plus forcée automatiquement ; dictez <b>« point »</b>, <b>« virgule »</b>, <b>« point d'interrogation »</b> etc. quand vous le souhaitez<br>"
+                "• <b>Aucune ponctuation automatique</b> : le texte s'écrit nu ; dictez <b>« point »</b>, <b>« virgule »</b>, <b>« point d'interrogation »</b> etc. quand vous le souhaitez<br>"
+                "• La casse suit la phrase : majuscule seulement au début du texte et après une phrase terminée, minuscule sinon (plus de majuscule forcée à chaque souffle)<br>"
                 + spelling_note
                 + "• <b>« Phénix repos »</b> : mettre en veille vocale (sans conflit avec Dragon)<br>"
                 "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
@@ -524,11 +527,27 @@ class PhenixVoiceController:
             new_text, discard_audio=not learn
         )
         self._close_correction_bar()
-        if old_seg is not None and learn and old_seg.audio_pcm is not None:
+
+        # Classification de la correction : règle de texte (ponctuation/casse/
+        # espaces uniquement) vs erreur de reconnaissance audio. Une correction
+        # de texte ne doit JAMAIS polluer l'apprentissage audio (LoRA).
+        textual = old_seg is not None and is_textual_only_correction(
+            old_seg.injected_text, new_text
+        )
+
+        if textual and learn:
+            # Règle de texte validée : tracée dans le journal SANS échantillon WAV.
+            self._save_learned_correction_sample(
+                None, old_seg.injected_text, new_text, kind="textual"
+            )
+            mode_tag = "✏️ Corrigé — règle texte (pas d'apprentissage audio)"
+        elif textual:
+            mode_tag = "🛡️ Corrigé SANS apprendre (règle texte)"
+        elif old_seg is not None and learn and old_seg.audio_pcm is not None:
             # Snapshot de sécurité avant d'apprendre une correction (anti-dérive / rollback)
             self.snapshot_manager.create_snapshot("avant_correction")
             self._save_learned_correction_sample(
-                old_seg.audio_pcm, old_seg.raw_text, new_text
+                old_seg.audio_pcm, old_seg.raw_text, new_text, kind="acoustic"
             )
             mode_tag = "🧠 Corrigé & Appris pour LoRA"
         else:
@@ -556,29 +575,41 @@ class PhenixVoiceController:
                 self._exit_spelling_mode()
 
     def _save_learned_correction_sample(
-        self, audio_pcm: np.ndarray, heard_text: str, corrected_text: str
+        self,
+        audio_pcm: np.ndarray | None,
+        heard_text: str,
+        corrected_text: str,
+        kind: str = "acoustic",
     ) -> None:
-        """Enregistre le couple (Audio WAV, Texte corrigé) validé pour le futur Fine-Tuning LoRA."""
+        """Enregistre le couple (Audio WAV, Texte corrigé) validé pour le futur Fine-Tuning LoRA.
+
+        `kind="textual"` : correction de règle de texte (ponctuation/casse/espace)
+        — journalisée pour diagnostic SANS échantillon audio (`audio_pcm=None`),
+        afin de ne jamais polluer l'apprentissage acoustique.
+        """
         try:
             out_dir = Path("user_data/corrections_learned")
             out_dir.mkdir(parents=True, exist_ok=True)
             ts = time.strftime("%Y%m%d_%H%M%S")
-            wav_path = out_dir / f"corr_{ts}.wav"
-            pcm16 = np.clip(audio_pcm * 32767.0, -32768, 32767).astype(np.int16)
-            with wave.open(str(wav_path), "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(16000)
-                wf.writeframes(pcm16.tobytes())
+            wav_path: Path | None = None
+            if audio_pcm is not None:
+                wav_path = out_dir / f"corr_{ts}.wav"
+                pcm16 = np.clip(audio_pcm * 32767.0, -32768, 32767).astype(np.int16)
+                with wave.open(str(wav_path), "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    wf.writeframes(pcm16.tobytes())
 
             with open(out_dir / "corrections_log.jsonl", "a", encoding="utf-8") as f:
                 f.write(
                     json.dumps(
                         {
                             "timestamp": ts,
-                            "wav": str(wav_path),
+                            "wav": str(wav_path) if wav_path is not None else None,
                             "heard_text": heard_text,
                             "corrected_text": corrected_text,
+                            "kind": kind,
                         },
                         ensure_ascii=False,
                     )
@@ -658,8 +689,28 @@ class PhenixVoiceController:
                     continue
 
                 processed = self.processor.process(
-                    arbitrated.best_text, is_sleeping=self.is_sleeping
+                    arbitrated.best_text,
+                    is_sleeping=self.is_sleeping,
+                    # Contexte du texte déjà injecté : cohérence casse/espaces
+                    # entre souffles (pas de majuscule automatique en tête de souffle).
+                    previous_text=recent_ctx,
                 )
+
+                # Alternatives de correction nettoyées avec les MÊMES règles que le
+                # texte dicté (ponctuation dictée, symboles, casse/espaces), choix
+                # retenu exclu et dédoublonnage : la fenêtre « Corriger ça » propose
+                # ainsi des choix directement comparables à ce qui a été écrit.
+                if arbitrated.ranked_alternatives:
+                    arbitrated = replace(
+                        arbitrated,
+                        ranked_alternatives=self.processor.format_alternatives(
+                            arbitrated.ranked_alternatives,
+                            previous_text=recent_ctx,
+                            chosen_text=(
+                                processed.text_to_inject or arbitrated.best_text
+                            ),
+                        ),
+                    )
 
                 # Journalisation diagnostique
                 try:

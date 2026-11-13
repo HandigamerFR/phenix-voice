@@ -8,6 +8,10 @@ from pathlib import Path
 import re
 from typing import Iterable, Mapping, TypeVar
 
+from phenix_voice.postprocess.coherence import (
+    adapt_chunk_to_context,
+    strip_auto_punctuation,
+)
 from phenix_voice.postprocess.rules import (
     PhoneticRuleEngine,
     command_keys,
@@ -15,6 +19,7 @@ from phenix_voice.postprocess.rules import (
 )
 from phenix_voice.postprocess.symbols import (
     SpokenFormStore,
+    _Substitution,
     apply_symbol_forms,
     spelling_symbol,
 )
@@ -400,22 +405,6 @@ def _ends_with_explicit_spoken_punctuation(norm_text: str) -> bool:
     return False
 
 
-def _strip_auto_terminal_punctuation(text: str) -> str:
-    """Retire la ponctuation finale ajoutée automatiquement par le modèle (point/virgule)
-    pour ne pas casser les phrases inachevées. Préserve les fins explicites comme « .\n », « \n\n » ou « ... »."""
-    if not text:
-        return text
-    # Ne pas toucher aux fins de ligne/paragraphes gérées par les commandes de ponctuation dictée
-    if text.endswith("\n"):
-        return text
-    # Préserver les points de suspension explicites
-    if text.rstrip().endswith("..."):
-        return text
-    # Retirer uniquement le point ou la virgule terminaux auto-ajoutés (cas signalé : phrase/groupes de mots coupés)
-    stripped = re.sub(r"[ \t]*[.,]+[ \t]*$", "", text)
-    return stripped
-
-
 def text_to_nato_spelling(raw_text: str) -> str:
     """Convertit une énonciation d'alphabet radio (Alpha Bravo Charlie) en texte épelé.
     - Lettres NATO : Alpha/Bravo/... -> a/b/...
@@ -504,12 +493,122 @@ class HybridPunctuationProcessor:
             if spoken_forms_path is not None
             else SpokenFormStore()
         )
-        self._after_sentence_end: bool = True
+        # Dernier texte produit (repli quand l'appelant ne fournit pas le contexte) :
+        # sert à la cohérence casse/espaces entre souffles.
+        self._last_produced: str = ""
 
     def reset_context(self) -> None:
-        self._after_sentence_end = True
+        self._last_produced = ""
 
-    def process(self, raw_text: str, is_sleeping: bool = False) -> ProcessedUtterance:
+    # ------------------------------------------------------------------
+    # Formatage du texte dicté (cœur partagé dictée / alternatives)
+    # ------------------------------------------------------------------
+
+    def _format_core(self, mapped: str) -> tuple[str, _Substitution]:
+        """Cœur de formatage d'un chunk dicté — AUCUNE mutation d'état.
+
+        Retire la ponctuation automatique du modèle, applique le dictionnaire
+        de formes orales, les règles de ponctuation dictée (« virgule »,
+        « point »…) et les formes de symboles. La cohérence inter-souffles
+        (casse / espace de liaison) est appliquée ensuite par
+        `format_dictation` ou `format_alternatives`.
+        """
+        norm = normalize_key(mapped)
+        explicit_spoken_punct = _ends_with_explicit_spoken_punctuation(norm)
+        text = mapped.strip()
+        # AUCUNE ponctuation automatique : on retire tout ce que le modèle de
+        # transcription a pu ajouter (« Comment vas-tu ? » injectait « ? » tout
+        # seul et « Comment vas-tu pour l'interrogation ? » injectait « ? ? »).
+        # La ponctuation dictée (« virgule », « point »…) est écrite APRÈS, par
+        # les règles et formes de symboles — elle n'est donc pas touchée ici.
+        # La couche de cohérence remettra ponctuation/casse selon les options
+        # choisies par l'utilisateur (voir postprocess/coherence.py).
+        text = strip_auto_punctuation(text)
+        # Dictionnaire personnel de formes orales (« si tu entends A, écris B ») :
+        # prioritaire, appliqué sur la forme dictée brute avant les règles générales.
+        text = self.spoken_forms.apply(text)
+        for pattern, replacement in SPOKEN_PUNCTUATION_RULES:
+            text = pattern.sub(replacement, text)
+
+        # « point » isolé ou final explicite
+        if re.search(r"\bpoint\b", norm, re.IGNORECASE) and explicit_spoken_punct:
+            text = re.sub(r"\s+\bpoint\b[.!?]*$", ".", text, flags=re.IGNORECASE)
+            if normalize_key(text) == "point":
+                text = "."
+
+        text = re.sub(r"\s+,", ",", text)
+        text = re.sub(r"\s+\.", ".", text)
+        text = re.sub(r"\.\.+", lambda m: "..." if len(m.group(0)) >= 3 else ".", text)
+        text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
+        text = re.sub(r"[ \t]{2,}", " ", text)
+
+        # Formes orales de symboles (« astérisque » → « * », façon Dragon) :
+        # substitution en place APRÈS les règles de ponctuation dictée (« virgule »,
+        # « deux points »… sont déjà traitées là) + typographie française contextuelle.
+        substitution = apply_symbol_forms(text)
+        return substitution.text, substitution
+
+    def format_dictation(
+        self, mapped: str, previous_text: str | None = None
+    ) -> tuple[str, str | None, _Substitution]:
+        """Formate un chunk dicté avec cohérence inter-souffles.
+
+        Casse (majuscule seulement au début du texte et après une fin de phrase
+        dictée) + espace de liaison, puis mémorisation de la fin du texte produit
+        pour le souffle suivant. Retourne `(texte, variante_symbole, substitution)`.
+        """
+        text, substitution = self._format_core(mapped)
+        ctx = previous_text if previous_text is not None else self._last_produced
+        text = adapt_chunk_to_context(text, ctx)
+        variant_text = (
+            adapt_chunk_to_context(substitution.variant_text, ctx)
+            if substitution.variant_text is not None
+            else None
+        )
+        if text:
+            # Mémorise la fin du texte produit pour le souffle suivant
+            # (repli si l'appelant ne fournit pas `previous_text`).
+            self._last_produced = text
+        return text, variant_text, substitution
+
+    def format_alternatives(
+        self,
+        alternatives: list[str],
+        previous_text: str | None = None,
+        chosen_text: str = "",
+    ) -> list[str]:
+        """Formate les alternatives de correction avec les MÊMES règles que le
+        texte dicté (ponctuation dictée, symboles, casse/espaces), exclut le
+        choix retenu et dédoublonne (insensible à la casse).
+
+        Aucune mutation d'état : une alternative proposée n'est pas un texte
+        produit. Retourne les alternatives nettoyées, prêtes pour la fenêtre
+        « Corriger ça » (jusqu'à 9).
+        """
+        ctx = previous_text if previous_text is not None else self._last_produced
+        chosen_key = chosen_text.strip().casefold()
+        out: list[str] = []
+        seen: set[str] = set()
+        for alt in alternatives:
+            raw = (alt or "").strip()
+            if not raw:
+                continue
+            text, _sub = self._format_core(raw)
+            text = adapt_chunk_to_context(text, ctx).strip()
+            key = text.casefold()
+            if not key or key == chosen_key or key in seen:
+                continue
+            seen.add(key)
+            out.append(text)
+        return out
+
+    def process(
+        self,
+        raw_text: str,
+        is_sleeping: bool = False,
+        previous_text: str | None = None,
+    ) -> ProcessedUtterance:
+        """Route l'énoncé ; `previous_text` (texte déjà injecté) guide casse/espaces du dicté."""
         if not raw_text or not raw_text.strip():
             return ProcessedUtterance(
                 intent=VoiceIntentType.DICTATION,
@@ -613,7 +712,8 @@ class HybridPunctuationProcessor:
                 mapped_text=mapped,
             )
         if _hit(PRESS_ENTER_KEYS):
-            self._after_sentence_end = True
+            # Entrée = nouvelle ligne : le souffle suivant reprend une majuscule.
+            self._last_produced = "\n"
             return ProcessedUtterance(
                 intent=VoiceIntentType.PRESS_ENTER,
                 raw_text=raw_text,
@@ -668,64 +768,11 @@ class HybridPunctuationProcessor:
             )
 
         # 5. Mise en forme du texte dicté et ponctuation hybride
-        explicit_spoken_punct = _ends_with_explicit_spoken_punctuation(norm)
-        text = mapped.strip()
-        # Retirer la ponctuation terminale auto-ajoutée par Whisper pour éviter les doublons
-        # (log réel : « Comment vas-tu pour l'interrogation ? » injectait « Comment vas-tu ? ? »).
-        # On conserve la forme dictée dans une variable d'entrée pour les règles de ponctuation.
-        text_for_rules = re.sub(r"[ \t]*[.!?,;:»…]+[ \t]*$", "", text)
-        text = text_for_rules
-        # Dictionnaire personnel de formes orales (« si tu entends A, écris B ») :
-        # prioritaire, appliqué sur la forme dictée brute avant les règles générales.
-        text = self.spoken_forms.apply(text)
-        for pattern, replacement in SPOKEN_PUNCTUATION_RULES:
-            text = pattern.sub(replacement, text)
-
-        # « point » isolé ou final explicite
-        if re.search(r"\bpoint\b", norm, re.IGNORECASE) and explicit_spoken_punct:
-            text = re.sub(r"\s+\bpoint\b[.!?]*$", ".", text, flags=re.IGNORECASE)
-            if normalize_key(text) == "point":
-                text = "."
-
-        text = re.sub(r"\s+,", ",", text)
-        text = re.sub(r"\s+\.", ".", text)
-        text = re.sub(r"\.\.+", lambda m: "..." if len(m.group(0)) >= 3 else ".", text)
-        text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)
-        text = re.sub(r"[ \t]{2,}", " ", text)
-
-        # Formes orales de symboles (« astérisque » → « * », façon Dragon) :
-        # substitution en place APRÈS les règles de ponctuation dictée (« virgule »,
-        # « deux points »… sont déjà traitées là) + typographie française contextuelle.
-        substitution = apply_symbol_forms(text)
-        text = substitution.text
-
-        def _post_process(current: str) -> str:
-            # Ponctuation automatique du modèle (Whisper) : ne pas forcer un point/virgule final
-            # sur un groupe de mots inachevé. On conserve la ponctuation uniquement si elle a été dictée explicitement.
-            if not explicit_spoken_punct:
-                current = _strip_auto_terminal_punctuation(current)
-            if not self._after_sentence_end and current and not current.startswith(
-                ("\n", ".", ",", ")", "!", "?", ";", ":")
-            ):
-                current = " " + current
-            elif self._after_sentence_end and current and current[0].isalpha():
-                current = current[0].upper() + current[1:]
-            return current
-
-        text = _post_process(text)
-        # Variante « mot dicté » (popup de choix du symbole ambigu) : mêmes finitions.
-        variant_text = (
-            _post_process(substitution.variant_text)
-            if substitution.variant_text is not None
-            else None
+        # (cœur partagé avec `format_alternatives` : mêmes règles pour les
+        # choix de la fenêtre « Corriger ça » — voir `_format_core`).
+        text, variant_text, substitution = self.format_dictation(
+            mapped, previous_text
         )
-
-        stripped_end = text.rstrip(" ")
-        if stripped_end.endswith(("\n", ".", "!", "?", "...")):
-            self._after_sentence_end = True
-        else:
-            # Laisser la suite dans la même phrase si l'utilisateur n'a pas terminé explicitement
-            self._after_sentence_end = False
 
         return ProcessedUtterance(
             intent=VoiceIntentType.DICTATION,
