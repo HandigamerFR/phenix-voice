@@ -14,6 +14,7 @@ from phenix_voice.postprocess.coherence import (
 )
 from phenix_voice.postprocess.rules import (
     PhoneticRuleEngine,
+    collapse_repeated_utterance,
     command_keys,
     normalize_key,
 )
@@ -376,6 +377,46 @@ NATO_ALPHABET: dict[str, str] = {
 NATO_SPACE_TOKENS: set[str] = {"espace", "space"}
 NATO_EMPTY_TOKENS: set[str] = {"trait d'union", "tiret", "moins"}  # symboles simples éventuels (optionnel)
 
+
+def _edit_distance_at_most_one(a: str, b: str) -> bool:
+    """Vrai si `a` et `b` diffèrent d'au plus une insertion/suppression/substitution."""
+    if a == b:
+        return True
+    la, lb = len(a), len(b)
+    if abs(la - lb) > 1:
+        return False
+    if la == lb:
+        return sum(1 for x, y in zip(a, b) if x != y) == 1
+    # `a` le plus court : un seul glissement autorisé
+    if la > lb:
+        a, b, la, lb = b, a, lb, la
+    i = j = 0
+    skipped = False
+    while i < la and j < lb:
+        if a[i] == b[j]:
+            i += 1
+            j += 1
+        else:
+            if skipped:
+                return False
+            skipped = True
+            j += 1
+    return True
+
+
+def _nato_fuzzy(token: str) -> str | None:
+    """Lettre NATO à écart <= 1 — prononciation dysarthrique (« make » ≈ « mike »).
+
+    Tolérance **en mémoire, mode épellation uniquement** (le tableau reste en
+    français naturel). Les mots de < 3 lettres sont exclus (trop de faux amis).
+    """
+    if len(token) < 3:
+        return None
+    for key, letter in NATO_ALPHABET.items():
+        if _edit_distance_at_most_one(token, key):
+            return letter
+    return None
+
 DIGIT_WORDS: dict[str, str] = {
     "zéro": "0",
     "zero": "0",
@@ -471,9 +512,39 @@ def text_to_nato_spelling(raw_text: str) -> str:
                 out.append("-")
         elif len(tok) == 1 and tok.isalnum():
             out.append(tok)
-        # Les mots inconnus sont ignorés pour éviter d'injecter du texte dicté parasite en mode épellation
+        else:
+            # Tolérance phonétique (en mémoire, mode épellation uniquement) :
+            # « make » ≈ « mike » (écart <= 1) → lettre acceptée quand même.
+            fuzzy = _nato_fuzzy(tok)
+            if fuzzy is not None:
+                out.append(fuzzy)
+        # Les autres mots inconnus sont ignorés pour éviter d'injecter du texte dicté parasite en mode épellation
         i += 1
     return "".join(out)
+
+
+def spelling_from_result(
+    raw_text: str, alternatives: Iterable[str] | None = None
+) -> tuple[str, str | None]:
+    """Conversion d'un souffle en texte épellé (mode épellation) — rejet explicite.
+
+    Retourne `(texte, rejet)` :
+    - `texte` non vide → conversion réussie (directement, ou retrouvée dans les
+      alternatives du STT — ex. « M. » parmi les secondes hypothèses de « Make. ») ;
+    - `texte` vide + `rejet=None` → souffle vide (silence : rien à signaler) ;
+    - `texte` vide + `rejet=raw_text` → **non reconnu** : l'appelant doit
+      AFFICHER le rejet — plus jamais de silence `dictation_empty` en épellation.
+    """
+    spelled = text_to_nato_spelling(raw_text)
+    if spelled:
+        return spelled, None
+    if not raw_text.strip():
+        return "", None
+    for alt in alternatives or ():
+        cand = text_to_nato_spelling(alt)
+        if cand:
+            return cand, None
+    return "", raw_text.strip()
 
 
 class HybridPunctuationProcessor:
@@ -627,6 +698,15 @@ class HybridPunctuationProcessor:
         # Formes tolérées de l'énoncé pour le matching des commandes (en mémoire) :
         # « C'était une commande, » ≡ « c'etait une commande » ≡ « CETAIT UNE COMMANDE ! »
         ckey = command_keys(mapped)
+        # Énoncés doublés (« Mode épellation, mode épellation. », « Corriger ça,
+        # Corriger ça. ») : repli de la répétition pour le matching SEULEMENT —
+        # le texte dicté (`mapped`) reste intact.
+        collapsed = collapse_repeated_utterance(norm)
+        if collapsed != norm:
+            for k in command_keys(collapsed):
+                if k not in ckey:
+                    ckey.insert(0, k)
+            norm = collapsed
 
         def _hit(index: set[str]) -> bool:
             return any(v in index for v in ckey)

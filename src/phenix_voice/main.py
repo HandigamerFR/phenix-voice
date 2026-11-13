@@ -37,7 +37,7 @@ from phenix_voice.postprocess.plausibility import PlausibilityArbitrator
 from phenix_voice.postprocess.punctuation import (
     HybridPunctuationProcessor,
     VoiceIntentType,
-    text_to_nato_spelling,
+    spelling_from_result,
 )
 from phenix_voice.stt.engine import WhisperDirectMLEngine
 from phenix_voice.ui.hud import MicState, PhenixHUD
@@ -986,10 +986,16 @@ class PhenixVoiceController:
                 # L'utilisateur doit valider explicitement (bouton, « Valider la correction », ou choix 1…9).
                 if processed.intent == VoiceIntentType.DICTATION:
                     inject_text = processed.text_to_inject
-                    # Mode épellation (alphabet radio) : convertir les mots NATO en lettres, sans ponctuation auto.
+                    # Mode épellation (alphabet radio) : convertir les mots NATO en
+                    # lettres, sans ponctuation auto. Filtrage sur l'utile : si le
+                    # STT n'a rien d'utile, on cherche dans ses alternatives (« M. »
+                    # parmi les hypothèses de « Make. ») puis on REJETTE explicitement
+                    # — plus jamais de silence en mode épellation.
+                    spelling_rejected: str | None = None
                     if self._spelling_mode:
-                        spelled = text_to_nato_spelling(result.text)
-                        inject_text = spelled
+                        inject_text, spelling_rejected = spelling_from_result(
+                            result.text, result.alternatives
+                        )
                     # Forme orale ambiguë (« euro », « paragraphe »…) : le symbole est inséré
                     # par défaut et une popup propose aussi le mot dicté (voix « choix un /
                     # deux » ou clic), façon Dragon. Alternative complète = [symbole, mot].
@@ -1072,11 +1078,27 @@ class PhenixVoiceController:
                                     text=inject_text,
                                 )
                     else:
-                        self.injection_logger.log_action(
-                            "dictation_empty",
-                            spelling_mode=self._spelling_mode,
-                            raw_stt=result.text,
-                        )
+                        if spelling_rejected is not None:
+                            # Rejet explicite en mode épellation : on montre ce qui
+                            # n'a pas été reconnu (l'utilisateur sait qu'il faut
+                            # redire la lettre) — plus jamais de silence.
+                            self.hud.set_transcript(
+                                f"❌ Épellation non reconnue : « {spelling_rejected} »",
+                                result.total_ms,
+                                "[Mode épellation — dites une lettre (alphabet radio), "
+                                "« espace », « chiffre X » ou « Fin épellation »]",
+                            )
+                            self.injection_logger.log_action(
+                                "spelling_rejected",
+                                raw_stt=result.text,
+                                spelling_mode=True,
+                            )
+                        else:
+                            self.injection_logger.log_action(
+                                "dictation_empty",
+                                spelling_mode=self._spelling_mode,
+                                raw_stt=result.text,
+                            )
 
                     if not self.is_sleeping and not self.is_muted:
                         self.hud.set_state(MicState.LISTENING)

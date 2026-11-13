@@ -282,8 +282,20 @@ class WhisperDirectMLEngine:
                 return bucket
         return 3000
 
-    def _build_prompt_ids(self, initial_prompt: str | None = None) -> np.ndarray:
-        """Construit la séquence d'amorçage du décodeur avec support optionnel du vocabulaire personnel."""
+    def _build_prompt_ids(
+        self, initial_prompt: str | None = None, language: str | None = None
+    ) -> np.ndarray:
+        """Construit la séquence d'amorçage du décodeur avec support optionnel du vocabulaire personnel.
+
+        `language` : langue du segment (`"fr"` par défaut, `"en"` pour les segments
+        d'épellation — les mots de l'alphabet radio sont anglais et Whisper les
+        transforme en mots anglais proches « Make » / « Bank » en décodage français).
+        """
+        lang_id = self.lang_token
+        if language:
+            candidate = self.tokenizer.token_to_id(f"<|{language}|>")
+            if candidate is not None:
+                lang_id = candidate
         prefix: list[int] = []
         if initial_prompt and initial_prompt.strip():
             encoded = self.tokenizer.encode(" " + initial_prompt.strip()).ids
@@ -296,7 +308,7 @@ class WhisperDirectMLEngine:
         prefix.extend(
             [
                 self.sot_token,
-                self.lang_token,
+                lang_id,
                 self.transcribe_token,
                 self.notimestamps_token,
             ]
@@ -310,6 +322,7 @@ class WhisperDirectMLEngine:
         max_new_tokens: int = 96,
         # Quota de la fenêtre « Corriger ça » : grille 3×3 = 9 choix.
         num_alternatives: int = 9,
+        language: str | None = None,
     ) -> TranscriptionResult:
         """Transcrit un segment audio 16 kHz mono float32 et génère également des alternatives proches."""
         t_start = time.perf_counter()
@@ -348,7 +361,7 @@ class WhisperDirectMLEngine:
 
         # 2. Premier pas Décodeur (calcul des clés/valeurs d'attention croisée)
         t_dec0 = time.perf_counter()
-        prompt_ids = self._build_prompt_ids(initial_prompt)
+        prompt_ids = self._build_prompt_ids(initial_prompt, language=language)
 
         if self.use_gpu_iobinding:
             io_dec = self.dec_session.io_binding()

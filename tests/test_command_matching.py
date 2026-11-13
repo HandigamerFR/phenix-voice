@@ -152,3 +152,52 @@ def test_choose_alt_keeps_one_to_three() -> None:
         got = proc.process(text)
         assert got.intent == VoiceIntentType.CHOOSE_ALT, f"{text!r} -> {got.intent.value}"
         assert got.choice_index == index, f"{text!r} -> {got.choice_index}, attendu {index}"
+
+
+# --- Énoncés doublés (session 12/11 : la voix répète la commande entière) -----
+
+
+def test_doubled_spelling_entry_still_enters_mode() -> None:
+    """« Mode épellation, mode épellation. » doit entrer en épellation (23:35:09 raté)."""
+    proc = HybridPunctuationProcessor()
+    r = proc.process("Mode épellation, mode épellation.")
+    assert r.intent == VoiceIntentType.ENTER_SPELLING, r.intent
+
+
+def test_doubled_corriger_ca_still_opens_correction() -> None:
+    """« Corriger ça, Corriger ça. » → correction du dernier segment, sans target (23:26:56)."""
+    proc = HybridPunctuationProcessor()
+    r = proc.process("Corriger ça, Corriger ça.")
+    assert r.intent == VoiceIntentType.OPEN_CORRECTION, r.intent
+    assert not r.target_arg, f"target_arg parasite : {r.target_arg!r}"
+
+
+def test_doubled_revise_command_still_recognized() -> None:
+    proc = HybridPunctuationProcessor()
+    r = proc.process("C'était une commande, c'était une commande.")
+    assert r.intent == VoiceIntentType.REVISE_COMMAND, r.intent
+
+
+def test_doubled_exit_spelling_still_exits() -> None:
+    proc = HybridPunctuationProcessor()
+    r = proc.process("Fin épellation fin épellation")
+    assert r.intent == VoiceIntentType.EXIT_SPELLING, r.intent
+
+
+def test_doubled_non_command_stays_dictation_with_full_text() -> None:
+    """Le repli ne touche QUE le matching : le texte dicté reste entier."""
+    proc = HybridPunctuationProcessor()
+    r = proc.process("bonjour tout le monde bonjour tout le monde")
+    assert r.intent == VoiceIntentType.DICTATION
+    assert r.text_to_inject == "Bonjour tout le monde bonjour tout le monde"
+
+
+def test_collapse_repeated_utterance_unit() -> None:
+    from phenix_voice.postprocess.rules import collapse_repeated_utterance
+
+    assert collapse_repeated_utterance("mode épellation mode épellation") == "mode épellation"
+    assert collapse_repeated_utterance("corriger ça corriger ça") == "corriger ça"
+    # Triplé, accents différents entre les répétitions, non-répété : rien à replier
+    assert collapse_repeated_utterance("a b a b a b") == "a b"
+    assert collapse_repeated_utterance("mode epellation mode épellation") == "mode epellation"
+    assert collapse_repeated_utterance("corriger ça hein") == "corriger ça hein"

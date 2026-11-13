@@ -23,6 +23,35 @@ def normalize_key(text: str) -> str:
     return cleaned
 
 
+def collapse_repeated_utterance(text: str) -> str:
+    """Replie un énoncé doublé/triplé en sa forme simple (en mémoire uniquement).
+
+    La voix dysarthrique répète parfois la commande entière : « Mode épellation,
+    mode épellation. », « Corriger ça, Corriger ça. » — l'appariement exact des
+    commandes cassait, l'énoncé partait en dictée. On détecte une séquence de
+    mots strictement répétée (comparaison aussi sans accents) et on ne garde
+    qu'une unité, **uniquement pour le matching des commandes** : le texte dicté
+    (`mapped`) n'est jamais modifié par ce repli.
+    """
+    tokens = text.split()
+    n = len(tokens)
+    if n < 2:
+        return text
+
+    def _fold(token: str) -> str:
+        decomposed = unicodedata.normalize("NFD", token)
+        return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+    tokens_folded = [_fold(t) for t in tokens]
+    for p in range(1, n // 2 + 1):
+        if n % p:
+            continue
+        unit = tokens_folded[:p]
+        if all(tokens_folded[i] == unit[i % p] for i in range(n)):
+            return " ".join(tokens[:p])
+    return text
+
+
 def command_keys(text: str) -> list[str]:
     """Formes de comparaison d'une commande — **uniquement en mémoire**.
 
