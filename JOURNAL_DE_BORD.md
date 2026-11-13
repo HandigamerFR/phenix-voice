@@ -335,3 +335,13 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 4. **Étape 4** : panneau « C'était une commande » trié par proximité phonétique.
 5. **Étape 5** : corpus phonèmes / LoRA.
 - Reporté : banc Tk à relancer avec l'accord de l'utilisateur (fenêtre témoin minimisée par erreur — SendInput exige le premier plan, ce n'est pas un bug).
+
+### 6. Étape 2 engagée (13/11, suite) — diagnostic NATO + correctifs rapides (`8dbecbc`)
+- **Diagnostic sur les 4 essais « Mike » (23:32:13/17/20/24)** : transcriptions `Veilk`/`Make.`/`Bank.`×2 (conf 0.15–0.55). **Hypothèse « décodage anglais » testée puis REJETÉE** : `language="en"` ne corrige rien (`Make.` reste `Make.`) et l'utilisateur rappelle que son accent français rendrait ce décodage non viable pour d'autres utilisateurs francophones. Décision : **rester en FR ; le vrai fix = étalonnage acoustique de SA prononciation (studio 26 lettres + LoRA étape 5)**. Le paramètre `language` reste dans `engine.py` (expérimental, documenté).
+- **Les 2 commandes ratées n'étaient PAS des échecs STT** : `Mode épellation, mode épellation.` et `Corriger ça, Corriger ça.` transcrits **parfaitement** (conf 0.73/0.77) — c'est le **doublon** qui cassait l'appariement exact → texte envoyé en dictée / `select_word not_found`.
+- **Correctifs implémentés + testés (59 passed, 3 deselected)** :
+  1. **`collapse_repeated_utterance`** (`rules.py`, en mémoire, matching seul — texte dicté intact) : replie la répétition d'une séquence de mots (comparaison aussi sans accents) — répare « Mode épellation ×2 », « Corriger ça ×2 », « C'était une commande ×2 », « Fin épellation ×2 ».
+  2. **Filtre « n'écouter que ce qui est utile »** : `spelling_from_result(raw, alternatives)` (`punctuation.py`) → conversion directe, puis recherche dans les **alternatives du STT** (ex. `M.` parmi les hypothèses de `Make.`), sinon **rejet explicite** affiché (`❌ Épellation non reconnue : « Bank. »` + log `spelling_rejected`) — **fini le silence `dictation_empty`**.
+  3. **Tolérance phonétique NATO** : `_nato_fuzzy` (écart ≤ 1, mots ≥ 3 lettres, table restant en français naturel) — « Make. » → `m` ; « Bank. »/« Veil. » restent rejetés (écart trop grand → l'étalonnage tranchera).
+- **Design validé (réponses utilisateur 13/11)** : « Rapides puis calibration » — prochaine pièce = **studio d'étalonnage des 26 lettres NATO avec la voix de l'utilisateur** (empreintes DTW, réutilise la mécanique de `AcousticCommandProtector`).
+- **Contrainte de design ajoutée (utilisateur)** : le système ne doit JAMAIS dépendre d'un anglais sans accent ; cible = Francophones d'abord (dysarthriques ou non) → **tuning du modèle (LoRA) = fondement**, pistes alternatives à comparer à l'étape 5 (prompting FR+NATO, classifieur 26 lettres).
