@@ -432,6 +432,34 @@ DIGIT_WORDS: dict[str, str] = {
     "neuf": "9",
 }
 
+# --- Accents dictés (mode épellation) ------------------------------------------
+# « écho accent aigu » → « é » (composition sur la dernière lettre épelée) ;
+# « accent grave » isolé → « è ». Tables en français naturel, tolérance en mémoire.
+ACCENT_SPECS: dict[str, tuple[dict[str, str], str]] = {
+    # forme dictée -> (table de composition lettre -> lettre, caractère autonome)
+    "aigu": ({"e": "é"}, "é"),
+    "grave": ({"a": "à", "e": "è", "u": "ù"}, "è"),
+    "circonflexe": ({"a": "â", "e": "ê", "i": "î", "o": "ô", "u": "û"}, "ê"),
+    "cédille": ({"c": "ç"}, "ç"),
+    "cedille": ({"c": "ç"}, "ç"),
+    "tréma": ({"e": "ë", "i": "ï", "u": "ü"}, "ï"),
+    "trema": ({"e": "ë", "i": "ï", "u": "ü"}, "ï"),
+}
+# Formes utilisables SANS le mot « accent » (non ambiguës avec des mots courants) :
+# « circonflexe » / « cédille » / « tréma » seuls restent acceptés.
+ACCENT_BARE_FORMS: frozenset[str] = frozenset(
+    {"circonflexe", "cédille", "cedille", "tréma", "trema"}
+)
+
+
+def _apply_accent(out: list[str], spec: tuple[dict[str, str], str]) -> None:
+    """Compose l'accent sur la dernière lettre épelée, sinon insère le caractère."""
+    table, standalone = spec
+    if out and out[-1] in table:
+        out[-1] = table[out[-1]]
+    else:
+        out.append(standalone)
+
 
 def _ends_with_explicit_spoken_punctuation(norm_text: str) -> bool:
     n = norm_text.strip()
@@ -489,6 +517,27 @@ def text_to_nato_spelling(raw_text: str) -> str:
         if tok == "en" and i + 2 < len(tokens) and tokens[i + 1] == "lettres":
             out.append(tokens[i + 2])
             i += 3
+            continue
+
+        # Accents dictés : composition sur la dernière lettre épelée
+        # (« écho accent aigu » → « é », « charlie cédille » → « ç ») ; sinon
+        # caractère autonome (« accent grave » isolé → « è »). Pluriels tolérés
+        # (« accents aigus »). Lettres = alphabet OTAN uniquement (décision 13/11).
+        if tok in ("accent", "accents") and i + 1 < len(tokens):
+            nxt = tokens[i + 1].replace("’", "'").strip("-")
+            spec = ACCENT_SPECS.get(nxt)
+            if spec is None and nxt.endswith("s"):
+                spec = ACCENT_SPECS.get(nxt[:-1])
+            if spec is not None:
+                _apply_accent(out, spec)
+                i += 2
+                continue
+        bare = tok if tok in ACCENT_BARE_FORMS else None
+        if bare is None and tok.endswith("s") and tok[:-1] in ACCENT_BARE_FORMS:
+            bare = tok[:-1]
+        if bare is not None:
+            _apply_accent(out, ACCENT_SPECS[bare])
+            i += 1
             continue
 
         # Symboles dictés (« point », « virgule », « arobase », « astérisque »…) —

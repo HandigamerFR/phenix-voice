@@ -61,3 +61,38 @@ def test_spelling_from_result_keeps_silence_as_silence() -> None:
     text, rejected = spelling_from_result("   ", [])
     assert text == ""
     assert rejected is None  # souffle vide : pas de message d'erreur
+
+
+# --- Accents dictés (formes validées 13/11 : lettres OTAN seulement) ----------
+
+
+def test_accent_composes_on_previous_nato_letter() -> None:
+    # « écho accent aigu » → « é » (une seule lettre, pas « e » + « é »)
+    assert text_to_nato_spelling("écho accent aigu") == "é"
+    # Formes validées par l'utilisateur : « Charlie cédille » ET « accent cédille »
+    assert text_to_nato_spelling("charlie cédille") == "ç"
+    assert text_to_nato_spelling("charlie accent cédille") == "ç"
+    assert text_to_nato_spelling("alpha accent grave") == "à"
+    assert text_to_nato_spelling("india tréma") == "ï"
+    assert text_to_nato_spelling("uniforme accent circonflexe") == "û"
+
+
+def test_accent_standalone_when_no_letter_before() -> None:
+    assert text_to_nato_spelling("accent aigu") == "é"
+    assert text_to_nato_spelling("accent grave") == "è"
+    assert text_to_nato_spelling("cédille") == "ç"
+
+
+def test_accent_falls_back_when_letter_cannot_take_it() -> None:
+    # « kilo accent aigu » : k ne prend pas l'aigu → caractère autonome après (« ké »)
+    assert text_to_nato_spelling("kilo accent aigu") == "ké"
+    # Après un espace : caractère autonome
+    assert text_to_nato_spelling("espace accent aigu") == " é"
+
+
+def test_accent_forms_tolerance() -> None:
+    # Plurales (« accents aigus »), casse et accents STT tolérés
+    assert text_to_nato_spelling("Accent Aigus") == "é"
+    assert text_to_nato_spelling("écho accents graves") == "è"
+    # « cedille » sans accent accepté (sortie STT dégradée)
+    assert text_to_nato_spelling("charlie cedille") == "ç"
