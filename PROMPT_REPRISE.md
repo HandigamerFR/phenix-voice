@@ -60,8 +60,14 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
 > de `JOURNAL_DE_BORD.md` + `git status`/`git log --oneline -5` suffisent à reprendre sans mémoire.
 > Dans la même conversation, je reçois aussi l'historique (résumé de session) et je vois l'interruption.
 
-- **Dernier état stable** : `8dbecbc` poussé (étape 2 : épellation filtrée + fix doublons) + cette mise à jour documentaire. Arbre Git : **propre**. Suite → **59 passed, 3 deselected**.
-- **Jalon TERMINÉ, TESTÉ et POUSSE (13/11, suite) — `8dbecbc` : Étape 2 premiers correctifs** :
+- **Dernier état stable** : `b113846` poussé (étape 2 : épellation filtrée, fix doublons, **accents dictés**) + recherche documentaire (13/11) + cette mise à jour documentaire. Arbre Git : **propre**. Suite → **63 passed, 3 deselected**.
+- **Jalon 13/11 — RECHERCHE DOCUMENTAIRE FAITE & CHOIX VALIDÉS (aucun code, rapport rendu, JOURNAL §7)** :
+  - **Vision utilisateur confirmée** : corpus = **textes naturels dictés** couvrant tous les phonèmes FR (plusieurs occurrences chacune) → **alignement forcé MFA (local)** → le LoRA fait la moyenne des occurrences. Jamais de liste de phonèmes isolés.
+  - **Choix 1 — Pipeline étape 5 = LoRA Whisper FR + MFA + augmentation** (gel encoder bas, couches hautes + decoder ; speed/pitch/SpecAugment ; full-FT seulement si corpus > ~10-20h — arXiv 2606.31722 montre full FT > LoRA *avec* 92h, MDPI 15/24 montre LoRA > full FT *en* faible ressource = notre cas).
+  - **Choix 2 — Filet DTW 26 mots NATO conservé** : session studio mixte = 26 mots NATO naturels (filet immédiat épellation) + textes naturels (corpus LoRA).
+  - **Choix 3 — ROCm Windows preview à valider en premier** (AMD PyTorch Preview 25.20) pour entraîner sur la RX 5700 XT ; repli CPU/Colab gratuit. DirectML = inference seulement (training non fiable).
+  - Prosodie : gardée pour **étape 3** (pilote de ponctuation, cho22b) + marqueur de sévérité — pas dans l'épellation.
+- **Jalon TERMINÉ, TESTÉ et POUSSE (13/11, suite) — `8dbecbc` + `b113846` : Étape 2 correctifs + accents** :
   - **Diagnostic** : les 4 essais « Mike » (23:32) = `Veilk`/`Make.`/`Bank.`×2 ; **décodage `language="en"` testé puis écarté** (rien amélioré + contrainte utilisateur : accent FR, viser les Francophones — paramètre conservé dans `engine.py` pour l'expérience seulement). Les 2 commandes ratées étaient des **doublons** (STT parfait) — pas des échecs vocaux.
   - **`rules.py`** : `collapse_repeated_utterance` (repli des énoncés doublés, matching seul, comparaison sans accents).
   - **`punctuation.py`** : wiring repli dans `process()` ; `_edit_distance_at_most_one` + `_nato_fuzzy` (« Make. » → `m`, « Bank. » reste rejeté) ; **`spelling_from_result(raw, alternatives)` → (texte, rejet)**.
@@ -94,13 +100,13 @@ Nous poursuivons le développement de **Phénix Voice (`phenix-voice`)**, un log
   1. **« C'était une commande » → panneau dédié** : afficher la **liste des commandes possibles triées par proximité phonétique** (la plus proche en premier), dans la fenêtre de correction séparée.
   2. **Inspiration aide Dragon** : `C:\Program Files (x86)\Nuance\NaturallySpeaking15\Help\fra\ProfessionalIndividual` (consulter, **ne pas recopier**).
 - **À faire ensuite, dans l'ordre (roadmap validée 13/11)** :
-  1. **Étape 2 — diagnostic épellation + navigation dans l'épellation** :
-     - Transcrire `seg_20261112_233213/17/20/24.wav` (STT brut « Veilk ! », « Make. », « Bank. »), étendre les variantes NATO (`text_to_nato_spelling` jette les mots inconnus) + prompt STT dédié au mode épellation.
-     - Fix **énoncés doublés** : « Mode épellation, mode épellation. » → `intent=dictation` (injecté comme texte !) ; « Corriger ça, Corriger ça. » → `select_word not_found` — fiabiliser l'appariement (tolérance doublon) plutôt que l'appariement exact.
+  1. **Étape 2 — RESTE** :
+     - **Studio mixte validé (13/11)** : 26 mots NATO naturels → filet DTW immédiat (`AcousticCommandProtector`, manifest `user_data/calibration/`) **+ textes naturels à couverture phonémique** → corpus LoRA (étape 5). Seul enregistrement = les deux à la fois.
      - **Commandes navigation/correction en mode épellation** : curseur gauche/droite, suppr caractère (nouvelles intentions + injection de touches).
-  2. **Étape 3** : cohérence inter-souffles v1 complète (accords au 2ᵉ passage).
+     - Variants NATO restants : `_nato_fuzzy` gère déjà « Make. » ; « Bank. »/« Veil. » tranchés par le filet DTW.
+  2. **Étape 3** : cohérence inter-souffles v1 complète (accords au 2ᵉ passage) + **prosodie → ponctuation** (cho22b).
   3. **Étape 4** : panneau « C'était une commande » trié par **proximité phonétique**.
-  4. **Étape 5** : corpus phonèmes / LoRA ; puis correction sur textes longs (UI Automation + multi-segments), Studio/rollback.
+  4. **Étape 5 (fondement, choix validés 13/11)** : studio textes naturels → **MFA alignement forcé local** (dictionnaire IPA FR) → **LoRA Whisper large-v3 FR** (couches hautes + decoder, gel encoder bas) + **augmentation** (speed/pitch/SpecAugment) → valider **ROCm Windows preview** en premier (repli CPU/Colab) ; outil de collecte type TEQST à considérer ; full-FT réévalué si corpus > ~10-20h.
 - **Reporté (recherche déjà faite, 12/11 nuit — aide Dragon, consultation seule)** : extension **« Corriger les <N> souffles précédents »** : Dragon ne compte pas en souffles mais en unités de texte, **plafond 20** (« Sélectionner/Effacer les <1-20> mots précédents », « Corriger de <texte> à <texte> », « Epeler ça » → fenêtre d'épellation = convergence avec notre implémentation). Proposition Phénix : N = mots 1…9 (table `CHOOSE_MAP`), plafond 25 (taille du `deque` du `ShadowBuffer`) → concaténation des N derniers segments dans la correction, validation → remplacement + fusion. **À valider avec l'utilisateur avant implémentation.**
 - **Pièges à connaître pour la reprise** : ne pas définir `PHENIX_INJECTION_PATH` en permanence (diagnostic uniquement) ; le banc `tools/injection_bench.py` ferme les applications de test en début/fin de série (Bloc-notes compris, en force) ; le Bloc-notes Win11 restaure sa session au lancement (le banc efface le document témoin de toute façon) ; lecture du texte reçu = presse-papier vidé avant chaque copie ; quota gratuit = prendre son temps, réserver les ~6 % payants aux blocages impossibles.
 

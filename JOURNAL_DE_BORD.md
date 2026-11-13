@@ -345,3 +345,22 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
   3. **Tolérance phonétique NATO** : `_nato_fuzzy` (écart ≤ 1, mots ≥ 3 lettres, table restant en français naturel) — « Make. » → `m` ; « Bank. »/« Veil. » restent rejetés (écart trop grand → l'étalonnage tranchera).
 - **Design validé (réponses utilisateur 13/11)** : « Rapides puis calibration » — prochaine pièce = **studio d'étalonnage des 26 lettres NATO avec la voix de l'utilisateur** (empreintes DTW, réutilise la mécanique de `AcousticCommandProtector`).
 - **Contrainte de design ajoutée (utilisateur)** : le système ne doit JAMAIS dépendre d'un anglais sans accent ; cible = Francophones d'abord (dysarthriques ou non) → **tuning du modèle (LoRA) = fondement**, pistes alternatives à comparer à l'étape 5 (prompting FR+NATO, classifieur 26 lettres).
+
+### 7. Recherche documentaire (13/11) — prosodie + méthodo d'entraînement, avant tout code
+- **Demande utilisateur** : « utilise tes connaissances mais surtout fait des recherches sur Internet sur la prosodie et comment on entraîne un modèle vocal avant de coder quoi que ce soit ». **Zéro code écrit** pendant cette phase.
+- **Vision d'entraînement validée par l'utilisateur** : corpus = **textes/phrases naturels dictés** (jamais une liste de phonèmes isolés — ergonomie + prosodie réelle), chaque texte contenant **plusieurs occurrences de chaque phonème** → alignement forcé puis **moyenne des occurrences** pour affiner le modèle. Alimente l'étape 5.
+- **Sources clés consultées** :
+  - **arXiv 2606.31722** (Adapting Foundation ASR to Dysarthric Speech, 08/2026) : locuteur unique, 92h + 8.8h corrections ; WER 128.4% → 15.8% (1.4h) → 10.7% (22.5h) → 9.7% (tout) ; **full FT > LoRA rank 8** ; Whisper > Qwen3-ASR ; outil de collecte **TEQST** ; corrections continues via app déployée.
+  - **CBA-Whisper** (Interspeech 2025, tan90xx/CBA-whisper) : curriculum learning + AdaLoRA sur datasets dysarthriques.
+  - **Diagnosis-aware fine-tuning** (Speech Communication 2026, S0167639326000415) : modèles par pathologie > pooling (−18.34 pts CER).
+  - **Augmentation** : Bhat 2025 two-stage (speed/pitch/tempo/volume + « Dysarthric SpecAugment », S0010482525003051) ; TTS-aug Hermann Interspeech 2023 ; arXiv 2406.08568 ; Mengke 2026 (spec+speed toujours compétitif).
+  - **LoRA bas-déf** : MDPI 15/24/13090 (LoRA > full FT en faible ressource, 3 langues) ; CbaLoRA (S0167639326000567).
+  - **Alignement forcé FR** : **MFA 3.x** (montreal-forced-aligner.readthedocs.io, dictionnaires IPA FR dispo — mfa-models, WikiPron) ; état de l'art 2026 arXiv 2606.18466.
+  - **Whisper fine-tuning best practices** : HF blog ; gel encoder bas + fine-tune couches hautes + decoder (Liu 2024) — mais geler le bas **dégrade** sur les petits modèles (6 couches) ; arXiv 2604.06507.
+  - **Prosodie** : Speech Prosody 2026 (mai 2026) ; ponctuation pilotée par la prosodie (cho22b Interspeech 2022, Balalaika arXiv 2507.13563) ; prosodie réduite dysarthrie = marqueur de sévérité (ASHA, PMC11427746).
+  - **Entraînement AMD** : **ROCm Windows preview natif** (AMD PyTorch Preview 25.20.01.14) → GPU training envisageable sur RX 5700 XT ; DirectML inference OK mais **training DirectML non fiable** ; ROCm Linux = alternative.
+- **Choix d'architecture VALIDÉS par l'utilisateur (question 13/11)** :
+  1. **Pipeline étape 5 = LoRA Whisper FR + MFA + augmentation** (gel encoder bas, couches hautes + decoder ; augmentation vitesse/hauteur/SpecAugment ; full-FT réévalué si corpus > ~10-20h).
+  2. **Filet DTW 26 mots NATO conservé** : session studio = vos 26 mots NATO naturels (filet immédiat épellation) + textes naturels (corpus LoRA) — rien n'est perdu.
+  3. **Validation ROCm Windows preview en premier** pour l'entraînement local (repli CPU/Colab si instable).
+- **Rappel technique** : la « moyenne des occurrences » est réalisée par l'entraînement lui-même après **alignement forcé (MFA en local)** — pas de calcul manuel nécessaire.
