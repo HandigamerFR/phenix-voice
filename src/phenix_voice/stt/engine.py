@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Callable
 import json
 from pathlib import Path
 import time
@@ -29,6 +30,66 @@ class TranscriptionResult:
     audio_duration_s: float = 0.0
     bucket_frames: int = 0
     provider: str = "DmlExecutionProvider"
+
+
+def build_alternatives(
+    generated_tokens: list[int],
+    runner_up_candidates: list[tuple[int, int, float]],
+    decode: Callable[[list[int]], str],
+    main_text: str,
+    num_alternatives: int,
+) -> list[str]:
+    """Construit les alternatives de correction à partir des seconds choix du décodage.
+
+    1. Substitutions unitaires, positions les plus ambiguës d'abord ;
+    2. si le quota n'est pas atteint, combinaisons de DEUX substitutions —
+       c'est ce qui permet de remplir jusqu'à **9 choix** dans la fenêtre
+       « Corriger ça » (au lieu des 1 à 3 obtenus avec les substitutions
+       seules).
+
+    `decode` est injecté (tokeniseur réel en production) : la logique reste
+    testable sans GPU. Dédoublonnage insensible à la casse.
+    """
+    alternatives: list[str] = []
+    seen: set[str] = set()
+    main_key = main_text.strip().casefold()
+
+    def _try(seq: list[int]) -> None:
+        if len(alternatives) >= num_alternatives:
+            return
+        text = decode(seq).strip()
+        key = text.casefold()
+        if text and key != main_key and key not in seen:
+            seen.add(key)
+            alternatives.append(text)
+
+    ordered = sorted(runner_up_candidates, key=lambda c: c[2], reverse=True)
+
+    # 1) substitutions unitaires
+    for pos, tok, _ in ordered:
+        if len(alternatives) >= num_alternatives:
+            break
+        seq = list(generated_tokens)
+        seq[pos] = tok
+        _try(seq)
+
+    # 2) combinaisons de deux substitutions si le quota n'est pas atteint
+    for i in range(len(ordered)):
+        if len(alternatives) >= num_alternatives:
+            break
+        for j in range(i + 1, len(ordered)):
+            if len(alternatives) >= num_alternatives:
+                break
+            pos1, tok1, _ = ordered[i]
+            pos2, tok2, _ = ordered[j]
+            if pos1 == pos2:
+                continue
+            seq = list(generated_tokens)
+            seq[pos1] = tok1
+            seq[pos2] = tok2
+            _try(seq)
+
+    return alternatives
 
 
 def _resolve_local_or_download(repo_id: str, filename: str) -> str:
@@ -247,7 +308,8 @@ class WhisperDirectMLEngine:
         audio_pcm: np.ndarray,
         initial_prompt: str | None = None,
         max_new_tokens: int = 96,
-        num_alternatives: int = 8,
+        # Quota de la fenêtre « Corriger ça » : grille 3×3 = 9 choix.
+        num_alternatives: int = 9,
     ) -> TranscriptionResult:
         """Transcrit un segment audio 16 kHz mono float32 et génère également des alternatives proches."""
         t_start = time.perf_counter()
@@ -361,7 +423,10 @@ class WhisperDirectMLEngine:
             if best_tok == self.eot_token:
                 break
 
-            if second_tok < self.eot_token and second_prob > 0.04:
+            # Seconds choix conservés pour les alternatives de correction :
+            # seuil abaissé (0.04 -> 0.01) pour proposer davantage de choix
+            # dans « Corriger ça » (objectif : 9 alternatives remplies).
+            if second_tok < self.eot_token and second_prob > 0.01:
                 runner_up_candidates.append(
                     ( len(generated_tokens), second_tok, second_prob / max(best_prob, 1e-6) )
                 )
@@ -403,17 +468,15 @@ class WhisperDirectMLEngine:
         main_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
         mean_conf = float(np.mean(token_probs)) if token_probs else 0.0
 
-        # Construction des alternatives les plus plausibles (pour la future barre de correction)
-        alternatives: list[str] = []
-        runner_up_candidates.sort(key=lambda x: x[2], reverse=True)
-        for pos, alt_tok, _ in runner_up_candidates:
-            alt_seq = list(generated_tokens)
-            alt_seq[pos] = alt_tok
-            alt_text = self.tokenizer.decode(alt_seq, skip_special_tokens=True).strip()
-            if alt_text and alt_text.lower() != main_text.lower() and alt_text not in alternatives:
-                alternatives.append(alt_text)
-                if len(alternatives) >= num_alternatives:
-                    break
+        # Construction des alternatives les plus plausibles (fenêtre « Corriger ça »,
+        # jusqu'à 9 choix : substitutions unitaires puis combinaisons de deux)
+        alternatives = build_alternatives(
+            generated_tokens,
+            runner_up_candidates,
+            lambda seq: self.tokenizer.decode(seq, skip_special_tokens=True),
+            main_text,
+            num_alternatives,
+        )
 
         return TranscriptionResult(
             text=main_text,

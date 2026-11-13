@@ -247,6 +247,13 @@ class CorrectionWindow(QWidget):
             self.alt_buttons.append(btn)
         outer.addLayout(self.alt_grid)
 
+        # Ligne 2bis : signal explicite du nombre de choix réellement trouvés
+        # (exigé : si le système ne trouve pas neuf alternatives, il doit le dire).
+        self.alt_count_label = QLabel("")
+        self.alt_count_label.setFont(QFont("Segoe UI", 8))
+        self.alt_count_label.setWordWrap(True)
+        outer.addWidget(self.alt_count_label)
+
         # Ligne 3 : champ éditable + validation + forme orale
         manual_row = QHBoxLayout()
         manual_row.setSpacing(8)
@@ -296,6 +303,22 @@ class CorrectionWindow(QWidget):
             f"✏️ Corriger « {clean_target} » — choisissez 1…{max(count, 1)} "
             "(proposition dans le champ, rien inséré avant validation) :"
         )
+        # Signal « moins de neuf choix » : on dit explicitement combien il y en a.
+        if count >= 9:
+            self.alt_count_label.setText("✅ 9/9 choix disponibles")
+            self.alt_count_label.setStyleSheet("color: #4ade80;")
+        elif count > 0:
+            self.alt_count_label.setText(
+                f"⚠️ {count}/9 choix seulement — le système n'a pas trouvé "
+                "plus d'alternatives pour ce souffle."
+            )
+            self.alt_count_label.setStyleSheet("color: #fbbf24;")
+        else:
+            self.alt_count_label.setText(
+                "❌ 0/9 choix — aucune alternative trouvée : modifiez le champ "
+                "à la main ou re-dictez la phrase."
+            )
+            self.alt_count_label.setStyleSheet("color: #f87171;")
         self._programmatic_edit = True
         try:
             self.correction_edit.setText(clean_target)
