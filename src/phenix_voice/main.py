@@ -34,10 +34,14 @@ from phenix_voice.os_control.hotkeys import GlobalInputMonitor
 from phenix_voice.os_control.shadow_buffer import ShadowBuffer
 from phenix_voice.postprocess.coherence import is_textual_only_correction
 from phenix_voice.postprocess.plausibility import PlausibilityArbitrator
+from phenix_voice.postprocess.agreement import merge_agreement_alternatives
 from phenix_voice.postprocess.punctuation import (
     HybridPunctuationProcessor,
+    SpellingCasingState,
     VoiceIntentType,
+    spelling_casing_command,
     spelling_from_result,
+    text_to_nato_spelling,
 )
 from phenix_voice.stt.engine import WhisperDirectMLEngine
 from phenix_voice.ui.hud import MicState, PhenixHUD
@@ -55,6 +59,46 @@ SPELLING_ALLOWED_INTENTS: set[VoiceIntentType] = {
     VoiceIntentType.WAKE,
     VoiceIntentType.SHOW_HELP,
 }
+
+# Accusés de réception des commandes de casse en mode épellation (HUD).
+_SPELLING_CASING_LABELS: dict[str, str] = {
+    "upper_next": "[Casse : MAJUSCULE pour la prochaine lettre]",
+    "lower_next": "[Casse : minuscule pour la prochaine lettre]",
+    "upper_all": "[Casse : TOUT EN MAJUSCULES — « Fin majuscules » pour revenir]",
+    "lower_all": "[Casse : tout en minuscules — « Fin minuscules » pour revenir]",
+    "reset": "[Casse : normale]",
+}
+
+
+def spelling_with_acoustic_net(
+    protector: AcousticCommandProtector,
+    segment: np.ndarray,
+    raw_text: str,
+    alternatives: list[str] | None = None,
+) -> tuple[str, str | None, tuple[str, float] | None]:
+    """Souffle → texte épellé, avec FILET acoustique sur les 26 mots OTAN.
+
+    Ordre de résolution en mode épellation :
+    1. STT direct puis ses alternatives (« M. » parmi les hypothèses de « Make. ») ;
+    2. filet acoustique : `protector.match_nato_letter` compare le segment aux
+       mots OTAN enregistrés (studio mixte) quand le STT n'a rien compris ;
+    3. rejet explicite — plus jamais de silence `dictation_empty`.
+
+    Retourne `(texte, rejet, nato_hit)` :
+    - `texte` non vide → lettre/symbole à insérer (`rejet` alors forcé à None) ;
+    - `texte` vide + `rejet=None` → silence, rien à signaler ;
+    - `texte` vide + `rejet=raw_text` → non reconnu : l'appelant l'AFFICHE ;
+    - `nato_hit=(mot_otan, distance_dtw)` quand le filet acoustique a tranché.
+    """
+    spelled, rejected = spelling_from_result(raw_text, alternatives)
+    if spelled:
+        return spelled, None, None
+    hit = protector.match_nato_letter(segment)
+    if hit is not None:
+        letter = text_to_nato_spelling(hit[0])
+        if letter:
+            return letter, None, hit
+    return "", rejected, None
 
 
 class PhenixVoiceController:
@@ -82,6 +126,7 @@ class PhenixVoiceController:
         self._help_visible = False
         self._pending_correction_text = ""
         self._spelling_mode = False  # Mode épellation (alphabet radio international)
+        self._spelling_casing = SpellingCasingState()  # casse « Majuscule / Tout en majuscules »
         self._spelling_from_correction = False  # fenêtre d'épellation ouverte depuis la correction
         self._correction_target_hwnd: int = 0  # fenêtre cible à restaurer avant injection de correction manuelle
 
@@ -402,6 +447,7 @@ class PhenixVoiceController:
         if self._spelling_mode:
             return
         self._spelling_mode = True
+        self._spelling_casing.reset()  # casse repartie à zéro à chaque entrée
         self._spelling_from_correction = self._correction_open
         prefill = self._pending_correction_text.strip() if self._correction_open else ""
         self.hud.show_spelling_window(prefill, from_correction=self._correction_open)
@@ -413,6 +459,7 @@ class PhenixVoiceController:
         """Sortie du mode épellation (voix « Fin épellation » / « Passer en mode dictée » ou ✕)."""
         was_active = self._spelling_mode
         self._spelling_mode = False
+        self._spelling_casing.reset()
         self._spelling_from_correction = False
         self.hud.hide_spelling_window()
         if was_active:
@@ -480,6 +527,7 @@ class PhenixVoiceController:
                 "• <b>« Chiffre un / Chiffre 5 »</b> : insérer le caractère numérique (1, 5…)<br>"
                 "• <b>« En lettres un »</b> ou <b>« Mot un »</b> : insérer le mot littéral « un » (pas le chiffre)<br>"
                 "• <b>Accents</b> : <b>« Echo accent aigu »</b> compose avec la dernière lettre (→ « é ») ; <b>« Charlie cédille »</b> (ou « accent cédille ») → « ç » ; <b>« accent grave »</b> seul → « è » (aussi circonflexe, tréma)<br>"
+                "• <b>Casse</b> : <b>« Majuscule »</b> = prochaine lettre en majuscule, <b>« Tout en majuscules »</b> = toutes les suivantes, <b>« Fin majuscules »</b> = retour au normal — même chose avec <b>« Minuscule » / « Tout en minuscules » / « Fin minuscules »</b> (singulier ou pluriel acceptés)<br>"
                 "• <b>« Virgule », « Point », « Arobase », « Astérisque »…</b> : insèrent le symbole (ex. adresse e-mail : « Mot laure point arobase mot gmail »)<br>"
                 "• <b>« Espace »</b> : insérer un espace<br>"
                 "• <b>« Fin épellation »</b> ou <b>« Passer en mode dictée »</b> : fermer la fenêtre et revenir à la dictée normale<br>"
@@ -994,9 +1042,46 @@ class PhenixVoiceController:
                     # — plus jamais de silence en mode épellation.
                     spelling_rejected: str | None = None
                     if self._spelling_mode:
-                        inject_text, spelling_rejected = spelling_from_result(
+                        # Commandes de casse dites à l'orthographe naturelle
+                        # (« Majuscule », « Tout en majuscules », « Fin majuscules »
+                        # + minuscules ; singulier/pluriel acceptés — « s » muet).
+                        # Elles ne produisent aucun texte : juste un changement d'état.
+                        casing_cmd = spelling_casing_command(
                             result.text, result.alternatives
                         )
+                        if casing_cmd is not None:
+                            self._spelling_casing.apply_command(casing_cmd)
+                            self.hud.set_transcript(
+                                _SPELLING_CASING_LABELS[casing_cmd],
+                                result.total_ms,
+                                "[Mode épellation — lettres OTAN, « espace », « Fin épellation »]",
+                            )
+                            self.injection_logger.log_action(
+                                "spelling_casing_command",
+                                command=casing_cmd,
+                                raw_stt=result.text,
+                            )
+                            if not self.is_sleeping and not self.is_muted:
+                                self.hud.set_state(MicState.LISTENING)
+                            self.injection_logger.clear_segment_context()
+                            continue
+                        inject_text, spelling_rejected, nato_hit = (
+                            spelling_with_acoustic_net(
+                                self.protector, segment, result.text, result.alternatives
+                            )
+                        )
+                        if nato_hit is not None:
+                            self.injection_logger.log_action(
+                                "spelling_acoustic_match",
+                                nato_word=nato_hit[0],
+                                distance=round(nato_hit[1], 4),
+                                letter=inject_text,
+                                raw_stt=result.text,
+                            )
+                        if inject_text:
+                            # Casse active : « Majuscule » consommée par la 1re lettre,
+                            # « Tout en majuscules » persiste jusqu'à « Fin majuscules ».
+                            inject_text = self._spelling_casing.apply_to_text(inject_text)
                     # Forme orale ambiguë (« euro », « paragraphe »…) : le symbole est inséré
                     # par défaut et une popup propose aussi le mot dicté (voix « choix un /
                     # deux » ou clic), façon Dragon. Alternative complète = [symbole, mot].
@@ -1036,6 +1121,14 @@ class PhenixVoiceController:
                                 if show_symbol_popup
                                 else arbitrated.ranked_alternatives[:9]
                             )
+                            if not show_symbol_popup and not self._spelling_mode:
+                                # Variantes d'accord (Lexique383) du texte dicté : la
+                                # boîte « Corriger ça » propose TOUTES les formes réelles
+                                # (même grammaticalement fautives au contexte près) ;
+                                # le texte écrit par défaut, lui, reste correct.
+                                seg_alternatives = merge_agreement_alternatives(
+                                    inject_text, seg_alternatives
+                                )
                             if not show_symbol_popup:
                                 # Une popup de symbole éventuellement ouverte sur un segment précédent est obsolète.
                                 self.hud.hide_symbol_choice()

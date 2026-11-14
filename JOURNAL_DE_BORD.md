@@ -364,3 +364,53 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
   2. **Filet DTW 26 mots NATO conservé** : session studio = vos 26 mots NATO naturels (filet immédiat épellation) + textes naturels (corpus LoRA) — rien n'est perdu.
   3. **Validation ROCm Windows preview en premier** pour l'entraînement local (repli CPU/Colab si instable).
 - **Rappel technique** : la « moyenne des occurrences » est réalisée par l'entraînement lui-même après **alignement forcé (MFA en local)** — pas de calcul manuel nécessaire.
+
+---
+
+## Session 10 - 14 Novembre 2026 : Studio mixte (prompts OTAN + corpus), filet acoustique d'épellation, commandes de casse & variantes d'accord via Lexique383
+
+### 1. Recherche « comment font les systèmes existants ? » (demande utilisateur, avant code)
+- **Demande** : « il faut peut-être importer un dictionnaire… renseigne-toi sur comment les systèmes de reconnaissance vocale existants font, on n'a pas besoin de réinventer la roue ».
+- **Constat documenté** : les erreurs d'accord représentent **~11 % des erreurs de transcription ASR en français** (homophones « est/estes », « terminé/terminées ») — littérature ASR française (LREC 2008/2014, ESTER) : les systèmes traitent ça avec un **lexique morphologique forme → lemme → formes fléchies** (type FLEMM, Lexique, Lefff) pour rescorer/resynchroniser les hypothèses. Notre boîte « Corriger ça » fait la même chose, côté proposition plutôt que rescoring.
+- **Choix validés par l'utilisateur (question 14/11)** :
+  1. **Lexique = Lexique383** (base standard FR, ~140 000 formes fléchies + lemmes + genre/nombre + fréquences, licence **CC BY-SA 4.0**) plutôt que Lefff (plus lourd, sans fréquences) ;
+  2. **Étendue = TOUS les mots inflectables** de la phrase, une seule substitution par proposition, classés depuis la fin, 9 max.
+- **Limite GitHub rappelée à l'utilisateur** : 100 Mo/fichier (recommandé < 50), ~5 Go/dépôt — mais la vraie raison de ne pas importer le zip de 27 Mo : il contient 34 colonnes dont 4 utiles → **compilation**.
+
+### 2. Lexique compilé dans le dépôt (172 Ko gzip / 713 Ko brut)
+- **`tools/build_lexicon_accords.py`** : lit `Lexique383.tsv` (téléchargé depuis lexique.org, hors dépôt) et écrit **`src/phenix_voice/resources/lexique_accords.tsv`** : une ligne = une **famille d'accord** = formes réelles partageant (lemme, tronc d'accord retirant suffixes `ées/és/ée/é/es/eaux/aux→ail/x/s/e`, statut accentué du suffixe), classées par fréquence décroissante (`freqlivres+freqfilms2`), familles à une seule forme écartées. **28 776 familles**.
+- **Validation par construction** : seules les formes RÉELLES du lexique sont proposées (« terminées » → terminé/terminée/terminés/terminées ; « cafée » n'existe pas → jamais proposé ; « année/années » groupe correct ; règle de statut accentué écarte « parle » quand le mot est « parlé »).
+- **Attribution/licence** : `resources/README_Lexique383.txt` (source, auteurs, citations, recette de recompilation) + `resources/LICENSE-CC-BY-SA-4.0.txt` (texte intégral CC BY-SA 4.0, obligation de partage pour le compilat).
+
+### 3. Nouveau module `postprocess/agreement.py` — variantes d'accord dans « Corriger ça »
+- **Règle validée par l'utilisateur** : le texte dicté reste **correct par défaut** ; la boîte propose en PLUS **toutes les variantes d'accord réelles** du texte, même grammaticalement fautives au contexte près (« les conversations sont terminées » → terminé / terminée / terminés + « conversation » au singulier).
+- `agreement_variants(text, max_variants=9)` : mots traités **depuis la fin**, **une substitution** par proposition, casse du mot d'origine conservée (`Terminées` → `Terminé`), préfixes d'apostrophe préservés (`d'accord` → `d'accords`), texte d'origine jamais redéclaré.
+- `merge_agreement_alternatives(text, alts, max_total=9)` : variantes d'accord **en tête**, puis hypothèses STT, dédoublonnées, plafond 9.
+- **Intégration `main.py`** (branche `DICTATION`, hors épellation, hors popup symbole) : `seg_alternatives = merge_agreement_alternatives(inject_text, …)` avant `inject_and_record` → `last.alternatives` alimente `open_correction_for_last` / `apply_correction_choice` sans autre changement.
+
+### 4. `spelling_with_acoustic_net()` — le filet acoustique branché (code réparé)
+- **`main.py`** : la fonction appelée depuis la branche épellation était **définie nulle part** (arbre cassé) — maintenant définie : `(protector, segment, raw_text, alternatives) → (texte, rejet, nato_hit)`. Ordre : **STT direct + alternatives** → **filet `protector.match_nato_letter`** (26 mots OTAN du studio) → **rejet explicite**. `nato_hit=(mot, distance)` journalisé en `spelling_acoustic_match`.
+- **`audio/fingerprints.py`** (déjà édité dans l'arbre) : `nato_templates` séparé de `templates` (`cmd_*`), `match_nato_letter(audio)` (durée 0,2–2,5 s, seuil 0.16) + `_best_template_match` partagé.
+- **`ui/calibration_studio.py`** (déjà édité) : `NATO_VOCABULARY` (26 mots → ids `nato_*`), `CORPUS_TEXTS` (12 phrases FR → `corpus_01..12`), `ENRICHED_PROMPTS` = **50 prompts** ; démarrage au **premier prompt non enregistré** (`_first_missing_index`) + bouton **« ⬅️ Précédent »** (`_prev_current`, désactivé au premier).
+
+### 5. Commandes de casse en mode épellation (orthographe naturelle, « s » muet)
+- **`punctuation.py`** : table `_CASING_COMMANDS` + `spelling_casing_command(raw, alternatives)` → `upper_next` (« Majuscule »), `lower_next` (« Minuscule »), `upper_all` / `lower_all` (« Tout en majuscules/minuscules »), `reset` (« Fin majuscules/minuscules », « Fin des … »). **Formes singulier ET pluriel listées explicitement** (décision 13/11 : le « s » est muet, aucune dépendance à l'orthographe du STT) ; normalisation casse + ponctuation de fin (`Majuscules !`), alternatives du STT vérifiées aussi.
+- **`SpellingCasingState`** (même fichier) : commande ponctuelle appliquée à la **prochaine production contenant une lettre** (espace/chiffre ne la consomme pas), mode persistant jusqu'à « Fin … »/sortie, la ponctuelle prime sur le persistant, entrée/sortie du mode remettent à zéro.
+- **`main.py`** : état `self._spelling_casing`, détection **avant** la conversion NATO (les commandes de casse ne produisent aucun texte : log `spelling_casing_command` + accusé affiché + `continue`), application sur le texte épellé, **aide** du mode épellation enrichie (ligne « Casse »).
+
+### 6. Validations (14/11)
+- **Suite complète : `101 passed, 3 deselected`** (avant = 63) — +38 tests :
+  - `tests/test_agreement_variants.py` ×10 (exemple utilisateur exact, ordre depuis la fin, casse, aucun mot inventé, apostrophes, plafonds, merge) ;
+  - `tests/test_spelling_casing.py` ×11 (singulier/pluriel, min/max symétriques, sortie, alternatives, machine à états) ;
+  - `tests/test_spelling_recognition.py` +5 (`spelling_with_acoustic_net` : priorité STT sans solliciter le filet, repli OTAN, rejet, silence, rattrapage STT vide) ;
+  - `tests/test_nato_acoustic_net.py` ×5 (routage `nato_`/`cmd_`/`corpus_`, match auto-sur-même-voix + conversion `Mike`→`m`, durées hors fenêtre) ;
+  - `tests/test_calibration_studio.py` ×6 (26 + 12 + 50 prompts uniques, premier manquant, navigation précédent).
+  - Échec révélé puis corrigé au passage : une alternative STT contenant une **lettre isolée** (« d » de « d'utile ») est acceptée à raison (comportement voulu pour « M. ») — données de test ajustées.
+- **Smoke offscreen** (`smoke_casse_accords.py`) : variantes de l'exemple exact, commandes de casse, **`CorrectionWindow` réelle ouverte avec 6 propositions** (4 accord + 2 STT, libellé ⚠️ 6/9), `SpellingWindow` append miroir → **SMOKE OK**.
+- **Rappel** : pour que le filet OTAN fonctionne en conditions réelles, il faut **enregistrer les 26 prompts `nato_*`** dans le studio (manifest `user_data/calibration/` — actuellement aucun `nato_`/`corpus_`).
+
+### 7. Prochaine étape prévue
+1. **Étape 2 (reste)** : enregistrement studio par l'utilisateur (26 mots OTAN + 12 phrases) ; **commandes de navigation en mode épellation** (curseur gauche/droite, suppr caractère — nouvelles intentions + injection de touches).
+2. **Étape 3** : cohérence inter-souffles v1 complète (accords au 2ᵉ passage) + prosodie → ponctuation.
+3. **Étape 4** : panneau « C'était une commande » trié par proximité phonétique.
+4. **Étape 5** : MFA + LoRA (choix validés 13/11), ROCm Windows preview en premier.

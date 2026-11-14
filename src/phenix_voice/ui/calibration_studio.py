@@ -122,6 +122,84 @@ ENRICHED_PROMPTS: list[CalibrationPrompt] = [
     ),
 ]
 
+# --- Studio mixte (décision 13/11) -------------------------------------------
+# 1. Les 26 mots OTAN, dits avec la voix de l'utilisateur : ils alimentent le
+#    FILET acoustique DTW du mode épellation
+#    (`AcousticCommandProtector.match_nato_letter`) quand le STT n'a rien compris
+#    (le fameux « Mike » transcrit « Make. » / « Veilk »).
+# 2. Des textes naturels à couverture phonémique FR : corpus de l'étape 5
+#    (alignement forcé MFA puis LoRA Whisper large-v3 FR).
+NATO_VOCABULARY: tuple[tuple[str, str, str], ...] = (
+    ("alpha", "Alpha", "a"),
+    ("bravo", "Bravo", "b"),
+    ("charlie", "Charlie", "c"),
+    ("delta", "Delta", "d"),
+    ("echo", "Echo", "e"),
+    ("foxtrot", "Foxtrot", "f"),
+    ("golf", "Golf", "g"),
+    ("hotel", "Hotel", "h"),
+    ("india", "India", "i"),
+    ("juliett", "Juliett", "j"),
+    ("kilo", "Kilo", "k"),
+    ("lima", "Lima", "l"),
+    ("mike", "Mike", "m"),
+    ("november", "November", "n"),
+    ("oscar", "Oscar", "o"),
+    ("papa", "Papa", "p"),
+    ("quebec", "Quebec", "q"),
+    ("romeo", "Romeo", "r"),
+    ("sierra", "Sierra", "s"),
+    ("tango", "Tango", "t"),
+    ("uniform", "Uniform", "u"),
+    ("victor", "Victor", "v"),
+    ("whiskey", "Whiskey", "w"),
+    ("xray", "X-Ray", "x"),
+    ("yankee", "Yankee", "y"),
+    ("zulu", "Zulu", "z"),
+)
+
+NATO_PROMPTS: list[CalibrationPrompt] = [
+    CalibrationPrompt(
+        id=f"nato_{key}",
+        category="13. Alphabet OTAN — Filet acoustique (mode épellation)",
+        expected_text=word,
+        instruction=(
+            f"Dites le mot OTAN « {word} » (= lettre « {letter.upper()} ») "
+            "avec votre prononciation habituelle."
+        ),
+    )
+    for key, word, letter in NATO_VOCABULARY
+]
+
+# Phrases naturelles : nasales (an/en/on/un), « e » muet, ch/gn/ou/oi, accents.
+CORPUS_TEXTS: tuple[str, ...] = (
+    "Le renard brun saute près du vieux pont.",
+    "J'ai écrit une lettre à ma sœur ce matin.",
+    "Les jeunes gens chantent une chanson joyeuse.",
+    "Mon frère achète des cerises très sucrées.",
+    "Pourquoi les ouvriers réparent-ils la toiture ?",
+    "Une île calme au milieu de la rivière.",
+    "Le bûcheron débite le bois sous la pluie.",
+    "Ta sœur a mangé des champignons au jardin.",
+    "Zoé a pris le bus jaune pour aller au cirque.",
+    "Vingt-cinq soldats chargent leurs sacs près du port.",
+    "Le docteur examine gentiment le petit oiseau.",
+    "Écoutez la musique douce du violon ce soir.",
+)
+
+CORPUS_PROMPTS: list[CalibrationPrompt] = [
+    CalibrationPrompt(
+        id=f"corpus_{i:02d}",
+        category="14. Corpus naturel FR (étape 5 — alignement + LoRA)",
+        expected_text=text,
+        instruction="Dictez cette phrase naturellement, comme en dictée normale.",
+    )
+    for i, text in enumerate(CORPUS_TEXTS, start=1)
+]
+
+ENRICHED_PROMPTS.extend(NATO_PROMPTS)
+ENRICHED_PROMPTS.extend(CORPUS_PROMPTS)
+
 
 class CalibrationStudioWindow(QWidget):
     """Fenêtre d'étalonnage avec transcription GPU immédiate et apprentissage automatique A -> B."""
@@ -159,7 +237,9 @@ class CalibrationStudioWindow(QWidget):
         self.setMinimumSize(840, 580)
         self._build_ui()
         self._populate_microphones()
-        self._load_prompt(0)
+        # Studio mixte (40+ prompts) : démarrer directement au premier NON enregistré
+        # pour ne pas re-sauffer les 12 prompts déjà étalonnés.
+        self._load_prompt(self._first_missing_index())
 
         self._meter_timer = QTimer(self)
         self._meter_timer.timeout.connect(self._update_meter)
@@ -176,6 +256,14 @@ class CalibrationStudioWindow(QWidget):
             return list(data.get("samples", []))
         except Exception:
             return []
+
+    def _first_missing_index(self) -> int:
+        """Indice du premier prompt absent du manifeste (0 si tout est enregistré)."""
+        recorded_ids = {e.get("id") for e in self.recorded_entries}
+        for i, p in enumerate(self.prompts):
+            if p.id not in recorded_ids:
+                return i
+        return 0
 
     def _init_gpu_engine(self) -> None:
         self.heard_label.setText(
@@ -290,6 +378,10 @@ class CalibrationStudioWindow(QWidget):
         self.progress_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         self.progress_label.setStyleSheet("color: #38bdf8;")
         header_row.addWidget(self.progress_label)
+
+        self.prev_btn = QPushButton("⬅️ Précédent")
+        self.prev_btn.clicked.connect(self._prev_current)
+        header_row.addWidget(self.prev_btn)
 
         self.skip_btn = QPushButton("⏭️ Passer cet élément")
         self.skip_btn.clicked.connect(self._skip_current)
@@ -418,6 +510,8 @@ class CalibrationStudioWindow(QWidget):
         self.current_index = index
         p = self.prompts[index]
         self.progress_label.setText(f"Étape {index + 1} / {len(self.prompts)}")
+        self.prev_btn.setEnabled(index > 0)
+        self.skip_btn.setEnabled(True)
         self.category_label.setText(p.category.upper())
         self.target_edit.setText(p.expected_text)
         self.instruction_label.setText(p.instruction)
@@ -436,6 +530,10 @@ class CalibrationStudioWindow(QWidget):
             self._load_prompt(self.current_index + 1)
         else:
             self.close()
+
+    def _prev_current(self) -> None:
+        if self.current_index > 0:
+            self._load_prompt(self.current_index - 1)
 
     def _audio_callback(
         self,

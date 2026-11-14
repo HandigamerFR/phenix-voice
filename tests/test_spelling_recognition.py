@@ -10,6 +10,8 @@ Vérifie :
 
 from __future__ import annotations
 
+import numpy as np
+
 from phenix_voice.postprocess.punctuation import (
     spelling_from_result,
     text_to_nato_spelling,
@@ -96,3 +98,81 @@ def test_accent_forms_tolerance() -> None:
     assert text_to_nato_spelling("écho accents graves") == "è"
     # « cedille » sans accent accepté (sortie STT dégradée)
     assert text_to_nato_spelling("charlie cedille") == "ç"
+
+
+# --- spelling_with_acoustic_net : STT d'abord, filet OTAN ensuite ------------
+
+
+class _FakeProtector:
+    """Double d'AcousticCommandProtector : hit OTAN programmable."""
+
+    def __init__(self, hit: tuple[str, float] | None = None) -> None:
+        self.hit = hit
+        self.calls = 0
+
+    def match_nato_letter(self, audio_pcm: object, sr: int = 16000) -> tuple[str, float] | None:
+        self.calls += 1
+        return self.hit
+
+
+def _silence(seconds: float = 1.0) -> np.ndarray:
+    return np.zeros(int(16000 * seconds), dtype=np.float32)
+
+
+def test_acoustic_net_prefers_stt_and_skips_protector() -> None:
+    from phenix_voice.main import spelling_with_acoustic_net
+
+    protector = _FakeProtector(hit=("Mike", 0.05))
+    text, rejected, nato = spelling_with_acoustic_net(
+        protector, _silence(), "Make.", ["Make,", "M."]
+    )
+    assert text == "m"            # conversion STT directe (fuzzy ≈ mike)
+    assert rejected is None
+    assert nato is None           # le filet acoustique n'a pas été sollicité
+    assert protector.calls == 0
+
+
+def test_acoustic_net_falls_back_to_nato_templates() -> None:
+    from phenix_voice.main import spelling_with_acoustic_net
+
+    protector = _FakeProtector(hit=("Mike", 0.11))
+    text, rejected, nato = spelling_with_acoustic_net(
+        protector, _silence(), "inutile", ["rien de tel"]
+    )
+    assert text == "m"            # lettre sauvée par le filet du studio mixte
+    assert rejected is None       # plus de rejet affiché quand le filet a tranché
+    assert nato == ("Mike", 0.11)
+    assert protector.calls == 1
+
+
+def test_acoustic_net_keeps_explicit_rejection_when_nothing_works() -> None:
+    from phenix_voice.main import spelling_with_acoustic_net
+
+    protector = _FakeProtector(hit=None)
+    text, rejected, nato = spelling_with_acoustic_net(
+        protector, _silence(), "Bank.", ["Bank!", "inutile"]
+    )
+    assert text == ""
+    assert rejected == "Bank."    # l'appelant DOIT afficher ce rejet
+    assert nato is None
+
+
+def test_acoustic_net_keeps_silence_as_silence() -> None:
+    from phenix_voice.main import spelling_with_acoustic_net
+
+    protector = _FakeProtector(hit=None)
+    text, rejected, nato = spelling_with_acoustic_net(protector, _silence(), "   ", [])
+    assert text == ""
+    assert rejected is None       # souffle vide : pas de message d'erreur
+    assert nato is None
+
+
+def test_acoustic_net_saves_stt_silence_with_template_hit() -> None:
+    """Le STT rend parfois vide (anomalie dictation_empty) : le filet doit rattraper."""
+    from phenix_voice.main import spelling_with_acoustic_net
+
+    protector = _FakeProtector(hit=("Mike", 0.09))
+    text, rejected, nato = spelling_with_acoustic_net(protector, _silence(), "  ", [])
+    assert text == "m"
+    assert rejected is None
+    assert nato == ("Mike", 0.09)

@@ -596,6 +596,101 @@ def spelling_from_result(
     return "", raw_text.strip()
 
 
+# --- Commandes de casse en mode épellation (orthographe naturelle, 14/11) ------
+# Le « s » final est muet en français : les formes SINGULIER et PLURIEL sont
+# explicitement listées et acceptées à l'écoute — aucune dépendance à
+# l'orthographe que le STT aura écrite (« Majuscule » ≡ « Majuscules »).
+
+CASING_UPPER_NEXT = "upper_next"   # « Majuscule »       → prochaine lettre
+CASING_LOWER_NEXT = "lower_next"   # « Minuscule »       → prochaine lettre
+CASING_UPPER_ALL = "upper_all"     # « Tout en majuscules » → toutes les suivantes
+CASING_LOWER_ALL = "lower_all"     # « Tout en minuscules » → toutes les suivantes
+CASING_RESET = "reset"             # « Fin majuscules »  → retour au normal
+
+_CASING_COMMANDS: dict[str, str] = {
+    "majuscule": CASING_UPPER_NEXT,
+    "majuscules": CASING_UPPER_NEXT,
+    "minuscule": CASING_LOWER_NEXT,
+    "minuscules": CASING_LOWER_NEXT,
+    "tout en majuscule": CASING_UPPER_ALL,
+    "tout en majuscules": CASING_UPPER_ALL,
+    "tout en minuscule": CASING_LOWER_ALL,
+    "tout en minuscules": CASING_LOWER_ALL,
+    "fin majuscule": CASING_RESET,
+    "fin majuscules": CASING_RESET,
+    "fin minuscule": CASING_RESET,
+    "fin minuscules": CASING_RESET,
+    "fin des majuscules": CASING_RESET,
+    "fin des minuscules": CASING_RESET,
+}
+
+
+def _normalize_casing_utterance(raw: str) -> str:
+    """Minuscules + ponctuation de fin de phrase retirée (« Majuscules ! »)."""
+    text = (raw or "").strip().lower().replace("’", "'")
+    text = re.sub(r"[.!?…,:;]+$", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def spelling_casing_command(
+    raw_text: str, alternatives: Iterable[str] | None = None
+) -> str | None:
+    """Détecte une commande de casse DITE en mode épellation.
+
+    Retourne `CASING_UPPER_NEXT` / `CASING_LOWER_NEXT` (prochaine lettre),
+    `CASING_UPPER_ALL` / `CASING_LOWER_ALL` (toutes les suivantes) ou
+    `CASING_RESET` (« Fin majuscules/minuscules »), sinon `None`.
+    Les alternatives du STT sont vérifiées après le texte principal.
+    """
+    for candidate in (raw_text, *(alternatives or ())):
+        action = _CASING_COMMANDS.get(_normalize_casing_utterance(candidate))
+        if action is not None:
+            return action
+    return None
+
+
+class SpellingCasingState:
+    """État de casse du mode épellation : lettre suivante (ponctuel) / suivantes.
+
+    - une commande « Majuscule/Minuscule » s'applique à la PROCHAINE production
+      contenant une lettre (espace/chiffre ne la consomme pas) ;
+    - une commande « Tout en … » reste active jusqu'à « Fin … » ou la sortie
+      du mode épellation ;
+    - la commande ponctuelle prime sur le mode persistant.
+    """
+
+    def __init__(self) -> None:
+        self._next: str | None = None
+        self._all: str | None = None
+
+    def apply_command(self, action: str) -> None:
+        if action == CASING_UPPER_NEXT:
+            self._next = "upper"
+        elif action == CASING_LOWER_NEXT:
+            self._next = "lower"
+        elif action == CASING_UPPER_ALL:
+            self._all, self._next = "upper", None
+        elif action == CASING_LOWER_ALL:
+            self._all, self._next = "lower", None
+        elif action == CASING_RESET:
+            self._next = None
+            self._all = None
+
+    def apply_to_text(self, text: str) -> str:
+        """Applique la casse active ; consomme la commande ponctuelle si lettres."""
+        mode = self._next or self._all
+        if not mode or not text:
+            return text
+        out = text.upper() if mode == "upper" else text.lower()
+        if self._next is not None and any(ch.isalpha() for ch in text):
+            self._next = None
+        return out
+
+    def reset(self) -> None:
+        self._next = None
+        self._all = None
+
+
 class HybridPunctuationProcessor:
     """Applique les règles déterministes A->B, route les commandes Phase 2 et met en forme la ponctuation."""
 

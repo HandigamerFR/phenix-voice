@@ -60,9 +60,32 @@ def dtw_cosine_distance(seq_a: np.ndarray, seq_b: np.ndarray) -> float:
     return float(dtw[n, m] / (n + m))
 
 
+def _best_template_match(
+    templates: dict[str, tuple[str, np.ndarray]],
+    emb: np.ndarray,
+    distance_threshold: float,
+) -> tuple[str, float] | None:
+    """Distance DTW minimale contre `templates` — partagé commandes vitales / lettres OTAN."""
+    best_text: str | None = None
+    best_dist = 999.0
+    for _, (expected_text, ref_emb) in templates.items():
+        dist = dtw_cosine_distance(emb, ref_emb)
+        if dist < best_dist:
+            best_dist = dist
+            best_text = expected_text
+    if best_text is not None and best_dist <= distance_threshold:
+        return best_text, best_dist
+    return None
+
+
 class AcousticCommandProtector:
     """Compare un segment audio court aux empreintes vocales enregistrées par l'utilisateur
     dans `user_data/calibration/manifest.json`.
+
+    Deux répertoires d'empreintes coexistent dans le même manifeste :
+    - `cmd_*` : commandes vitales (« Oups », « Corriger ça »…) → arbitrage ;
+    - `nato_*` : les 26 mots OTAN dits avec la voix de l'utilisateur (studio mixte)
+      → **filet acoustique du mode épellation** quand le STT n'a rien compris.
     """
 
     def __init__(
@@ -73,11 +96,13 @@ class AcousticCommandProtector:
         self.manifest_path = Path(manifest_path)
         self.distance_threshold = distance_threshold
         self.templates: dict[str, tuple[str, np.ndarray]] = {}
+        self.nato_templates: dict[str, tuple[str, np.ndarray]] = {}
         self.reload_templates()
 
     def reload_templates(self) -> None:
-        """Charge et pré-calcule les empreintes des commandes vitales depuis le manifeste d'étalonnage."""
+        """Charge et pré-calcule les empreintes (commandes vitales + lettres OTAN)."""
         self.templates.clear()
+        self.nato_templates.clear()
         if not self.manifest_path.exists():
             return
 
@@ -87,7 +112,12 @@ class AcousticCommandProtector:
         vad = SileroVAD()
         for item in data.get("samples", []):
             item_id = item.get("id", "")
-            if not item_id.startswith("cmd_"):
+            if item_id.startswith("cmd_"):
+                target = self.templates
+            elif item_id.startswith("nato_"):
+                target = self.nato_templates
+            else:
+                # corpus_*, phrase_*, punct_* : ni commande vitale, ni lettre OTAN
                 continue
             wav_path = Path(item.get("norm_wav", ""))
             if not wav_path.exists():
@@ -111,7 +141,7 @@ class AcousticCommandProtector:
                 pcm = pcm[s:e]
 
             emb = _extract_compact_mel_embedding(pcm)
-            self.templates[item_id] = (item["expected_text"], emb)
+            target[item_id] = (item["expected_text"], emb)
 
     def match_command(self, audio_pcm: np.ndarray, sr: int = 16000) -> tuple[str, float] | None:
         """Si `audio_pcm` (court, <= 2,5s) correspond fortement à une commande vitale enregistrée,
@@ -124,15 +154,22 @@ class AcousticCommandProtector:
             return None
 
         emb = _extract_compact_mel_embedding(audio_pcm)
-        best_text: str | None = None
-        best_dist = 999.0
+        return _best_template_match(self.templates, emb, self.distance_threshold)
 
-        for _, (expected_text, ref_emb) in self.templates.items():
-            dist = dtw_cosine_distance(emb, ref_emb)
-            if dist < best_dist:
-                best_dist = dist
-                best_text = expected_text
+    def match_nato_letter(self, audio_pcm: np.ndarray, sr: int = 16000) -> tuple[str, float] | None:
+        """Filet acoustique du mode épellation : compare le segment aux 26 mots OTAN
+        enregistrés avec la voix de l'utilisateur (studio mixte).
 
-        if best_text is not None and best_dist <= self.distance_threshold:
-            return best_text, best_dist
-        return None
+        Retourne `(mot_otan, distance_dtw)` — ex. `("Mike", 0.11)` — que l'appelant
+        convertit ensuite en lettre via `text_to_nato_spelling`. `None` si aucune
+        empreinte n'est proche (ou si le studio n'a pas encore enregistré les lettres).
+        Lettres dites lentement acceptées (jusqu'à 2,5 s).
+        """
+        if not self.nato_templates:
+            return None
+        dur_s = len(audio_pcm) / sr
+        if dur_s < 0.2 or dur_s > 2.5:
+            return None
+
+        emb = _extract_compact_mel_embedding(audio_pcm)
+        return _best_template_match(self.nato_templates, emb, self.distance_threshold)
