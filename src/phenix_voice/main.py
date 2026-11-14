@@ -101,6 +101,21 @@ def spelling_with_acoustic_net(
     return "", rejected, None
 
 
+def insert_chunk_at_cursor(pending: str, chunk: str, cursor: int) -> tuple[str, int]:
+    """Insère `chunk` dans `pending` à la position `curseur` (fonction pure).
+
+    `_pending_correction_text` reste la SOURCE DE VÉRITÉ du texte en attente ;
+    cette fonction ne fait que le reconstruire autour de la position de curseur
+    lue côté UI (champ épellation si ouvert, sinon champ correction). Le curseur
+    est rogné dans `[0, len(pending)]`.
+
+    Retourne `(texte_reconstruit, position_du_curseur_après_insertion)` —
+    testable sans instancier le contrôleur.
+    """
+    pos = max(0, min(cursor, len(pending)))
+    return pending[:pos] + chunk + pending[pos:], pos + len(chunk)
+
+
 class PhenixVoiceController:
     """Orchestrateur temps réel :
     Capture Micro -> Silero VAD -> Whisper GPU AMD -> Arbitre de Plausibilité -> Shadow Buffer & HUD.
@@ -398,7 +413,7 @@ class PhenixVoiceController:
             last.alternatives[:9],
             learn_enabled=self._learn_on_correction,
         )
-        self.hud.set_correction_edit_text(replacement)
+        self.hud.set_correction_edit_text(replacement, cursor=len(replacement))
         self.hud.set_transcript(
             replacement,
             0.0,
@@ -413,7 +428,10 @@ class PhenixVoiceController:
 
     def set_pending_correction_text(self, new_text: str) -> None:
         if self._correction_open:
-            self._pending_correction_text = new_text.strip()
+            # PAS de .strip() : un espace ajouté à la main dans le champ doit
+            # survivre aux resynchronisations suivantes (seuls les retours à la
+            # ligne résiduels sont rognés — le champ est monoligne).
+            self._pending_correction_text = new_text.strip("\r\n")
             # Synchroniser le miroir de la fenêtre d'épellation ouverte depuis la correction
             if self._spelling_mode:
                 self.hud.set_spelling_text(self._pending_correction_text)
@@ -449,7 +467,9 @@ class PhenixVoiceController:
         self._spelling_mode = True
         self._spelling_casing.reset()  # casse repartie à zéro à chaque entrée
         self._spelling_from_correction = self._correction_open
-        prefill = self._pending_correction_text.strip() if self._correction_open else ""
+        # Pas de .strip() ici non plus : un espace ajouté à la main avant
+        # d'ouvrir l'épellation doit être conservé dans le pré-rempli.
+        prefill = self._pending_correction_text if self._correction_open else ""
         self.hud.show_spelling_window(prefill, from_correction=self._correction_open)
         self.injection_logger.log_action(
             "spelling_mode_entered", from_correction=self._correction_open
@@ -468,7 +488,10 @@ class PhenixVoiceController:
     def set_spelling_text_from_ui(self, new_text: str) -> None:
         """Édition manuelle dans la fenêtre d'épellation (depuis la correction) → texte en attente."""
         if self._correction_open:
-            cleaned = new_text.strip()
+            # Conservation stricte des espaces saisis à la main (un espace ajouté
+            # entre deux mots épelés doit survivre au souffle suivant) ; seuls
+            # les retours à la ligne résiduels sont rognés.
+            cleaned = new_text.strip("\r\n")
             self._pending_correction_text = cleaned
             self.hud.set_correction_edit_text(cleaned)
 
@@ -1093,16 +1116,31 @@ class PhenixVoiceController:
                     if inject_text:
                         if self._correction_open:
                             if self._spelling_mode:
-                                # Épellation depuis la correction : chaque chunk s'AJOUTE
-                                # au texte pré-rempli (pas de remplacement) ; rien n'est
+                                # Épellation depuis la correction : chaque chunk
+                                # s'INSÈRE à la position du curseur du champ actif
+                                # (épellation si ouverte, sinon correction) — le
+                                # curseur cliqué n'est plus ignoré. Rien n'est
                                 # inséré dans l'éditeur avant validation explicite.
-                                proposed = self._pending_correction_text + inject_text
+                                proposed, new_cursor = insert_chunk_at_cursor(
+                                    self._pending_correction_text,
+                                    inject_text,
+                                    self.hud.active_insert_position(),
+                                )
                             else:
-                                proposed = inject_text.lstrip(" ").strip()
+                                # Nouvelle dictée : remplace la proposition (pas
+                                # d'append hors épellation). Seuls les retours à
+                                # la ligne résiduels sont rognés — les espaces de
+                                # tête/queue du texte dicté sont conservés.
+                                proposed = inject_text.strip("\r\n")
+                                new_cursor = len(proposed)
                             self._pending_correction_text = proposed
-                            self.hud.set_correction_edit_text(proposed)
+                            # Les DEUX champs sont réécrits avec le curseur
+                            # RESTAURÉ juste après l'insertion.
+                            self.hud.set_correction_edit_text(
+                                proposed, cursor=new_cursor
+                            )
                             if self._spelling_mode:
-                                self.hud.set_spelling_text(proposed)
+                                self.hud.set_spelling_text(proposed, cursor=new_cursor)
                             self.injection_logger.log_action(
                                 "dictation_proposed_to_correction",
                                 text=proposed,

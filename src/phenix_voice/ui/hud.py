@@ -89,10 +89,13 @@ class HUDSignals(QObject):
     transcript_ready = Signal(str, float, str)
     correction_opened = Signal(str, list, bool)  # (target_text, alternatives, learn_mode)
     correction_closed = Signal()
-    correction_edit_text_set = Signal(str)  # texte dicté proposé pendant correction (sans application auto)
+    # texte dicté proposé pendant correction (sans application auto) ;
+    # int = position du curseur après réécriture, -1 = conserver la position actuelle
+    correction_edit_text_set = Signal(str, int)
     spelling_opened = Signal(str, bool)  # (texte pré-rempli, ouvert_depuis_la_correction)
     spelling_closed = Signal()
-    spelling_text_set = Signal(str)   # miroir complet du texte en attente (mode correction)
+    # miroir complet du texte en attente (mode correction) ; int = curseur, -1 = conserver
+    spelling_text_set = Signal(str, int)
     spelling_text_append = Signal(str)  # chunk épelé ajouté (insertion directe hors correction)
     help_toggled = Signal(str, bool)  # (help_text, visible)
     symbol_choice_requested = Signal(str, list)  # (forme dictée, libellés des choix 1/2)
@@ -322,6 +325,8 @@ class CorrectionWindow(QWidget):
         self._programmatic_edit = True
         try:
             self.correction_edit.setText(clean_target)
+            # Curseur en FIN de proposition (comportement historique `setText`)
+            self.correction_edit.setCursorPosition(len(clean_target))
         finally:
             self._programmatic_edit = False
 
@@ -352,11 +357,21 @@ class CorrectionWindow(QWidget):
             self.show()
         self.raise_()
 
-    def set_edit_text(self, text: str) -> None:
-        """Propose un texte dans le champ (sans insertion automatique)."""
+    def set_edit_text(self, text: str, cursor: int | None = None) -> None:
+        """Propose un texte dans le champ (sans insertion automatique).
+
+        `cursor` : position explicite du curseur après réécriture ; `None` =
+        conserver la position actuelle du champ (rognée à la longueur du texte)
+        — les espaces saisis à la main ne sont PAS rognés (seuls les retours à
+        la ligne résiduels le sont, le champ est monoligne).
+        """
+        clean = text.strip("\r\n")
         self._programmatic_edit = True
         try:
-            self.correction_edit.setText(text.strip())
+            if cursor is None:
+                cursor = min(self.correction_edit.cursorPosition(), len(clean))
+            self.correction_edit.setText(clean)
+            self.correction_edit.setCursorPosition(max(0, cursor))
         finally:
             self._programmatic_edit = False
 
@@ -542,7 +557,8 @@ class SpellingWindow(QWidget):
 
     def open_window(self, prefill: str, from_correction: bool) -> None:
         self._from_correction = from_correction
-        self._set_text_programmatic(prefill)
+        # Curseur en FIN du pré-rempli : le premier chunk épelé s'ajoute à la suite.
+        self._set_text_programmatic(prefill, cursor=len(prefill))
         if from_correction:
             self.title_label.setText(
                 "🔤 Épellation — depuis la correction (Alpha, Bravo… ; les lettres "
@@ -575,15 +591,30 @@ class SpellingWindow(QWidget):
             self.show()
         self.raise_()
 
-    def set_text(self, text: str) -> None:
-        """Miroir complet du texte en attente (mode correction)."""
-        self._set_text_programmatic(text)
+    def set_text(self, text: str, cursor: int | None = None) -> None:
+        """Miroir du texte en attente (mode correction).
+
+        `cursor` = position explicite du curseur après réécriture (le flux
+        correction s'en sert pour RESTAURER le curseur juste après une
+        insertion) ; `None` = conserver la position actuelle du champ.
+        """
+        self._set_text_programmatic(text, cursor)
 
     def append_text(self, chunk: str) -> None:
-        """Ajoute un chunk épelé au miroir (insertion directe hors correction)."""
+        """Insère un chunk épelé à la position ACTUELLE du curseur du champ.
+
+        L'utilisateur peut avoir cliqué n'importe où dans le champ : le texte
+        ne doit pas partir en fin. `QLineEdit.insert()` fonctionne aussi sur le
+        miroir en lecture seule (seule la saisie humaine y est bloquée), et le
+        drapeau `_programmatic_edit` évite de re-boucler vers `on_text_changed`.
+        """
         if not chunk:
             return
-        self._set_text_programmatic(self.spell_edit.text() + chunk)
+        self._programmatic_edit = True
+        try:
+            self.spell_edit.insert(chunk)
+        finally:
+            self._programmatic_edit = False
 
     def close_window(self) -> None:
         self.hide()
@@ -592,10 +623,18 @@ class SpellingWindow(QWidget):
 
     # --- Événements internes --------------------------------------------------
 
-    def _set_text_programmatic(self, text: str) -> None:
+    def _set_text_programmatic(self, text: str, cursor: int | None = None) -> None:
+        """Réécrit le champ SANS déclencher `on_text_changed` (anti-récursion).
+
+        `cursor=None` conserve la position actuelle du curseur (rognée à la
+        nouvelle longueur) ; sinon le curseur est placé explicitement.
+        """
         self._programmatic_edit = True
         try:
+            if cursor is None:
+                cursor = min(self.spell_edit.cursorPosition(), len(text))
             self.spell_edit.setText(text)
+            self.spell_edit.setCursorPosition(max(0, cursor))
         finally:
             self._programmatic_edit = False
 
@@ -707,6 +746,20 @@ class PhenixHUD(QWidget):
             on_text_changed=on_spelling_text_changed,
             on_apply=on_apply_manual_correction,
             on_close=on_close_spelling,
+        )
+
+        # Curseurs des deux champs éditables : écrits EN THREAD GUI par
+        # `cursorPositionChanged`, lus par le thread STT via
+        # `active_insert_position()` pour l'insertion au curseur en mode
+        # épellation (jamais d'accès direct aux widgets depuis le worker).
+        self._spelling_cursor_pos = 0
+        self._correction_cursor_pos = 0
+        self._spelling_window_active = False
+        self.spelling_window.spell_edit.cursorPositionChanged.connect(
+            self._on_spelling_cursor_moved
+        )
+        self.correction_window.correction_edit.cursorPositionChanged.connect(
+            self._on_correction_cursor_moved
         )
 
         self.setWindowFlags(
@@ -967,9 +1020,18 @@ class PhenixHUD(QWidget):
     def hide_correction_panel(self) -> None:
         self.signals.correction_closed.emit()
 
-    def set_correction_edit_text(self, text: str) -> None:
-        """Met à jour le champ de correction avec une proposition dictée (sans l'appliquer)."""
-        self.signals.correction_edit_text_set.emit(text)
+    def set_correction_edit_text(
+        self, text: str, cursor: int | None = None
+    ) -> None:
+        """Met à jour le champ de correction avec une proposition dictée (sans l'appliquer).
+
+        `cursor` : position du curseur après réécriture ; `None` (défaut) =
+        conserver la position actuelle du champ — une édition humaine en cours
+        n'est jamais déplacée par une resynchronisation.
+        """
+        self.signals.correction_edit_text_set.emit(
+            text, -1 if cursor is None else cursor
+        )
 
     def show_spelling_window(self, prefill: str, from_correction: bool) -> None:
         """Ouvre la fenêtre d'épellation (pré-remplie depuis la correction, ou vide)."""
@@ -979,9 +1041,13 @@ class PhenixHUD(QWidget):
         """Ferme la fenêtre d'épellation (idempotent, appelable depuis n'importe quel thread)."""
         self.signals.spelling_closed.emit()
 
-    def set_spelling_text(self, text: str) -> None:
-        """Miroir complet du texte en attente dans la fenêtre d'épellation (mode correction)."""
-        self.signals.spelling_text_set.emit(text)
+    def set_spelling_text(self, text: str, cursor: int | None = None) -> None:
+        """Miroir complet du texte en attente dans la fenêtre d'épellation (mode correction).
+
+        `cursor` : position du curseur après réécriture (restauration après une
+        insertion au curseur) ; `None` = conserver la position actuelle.
+        """
+        self.signals.spelling_text_set.emit(text, -1 if cursor is None else cursor)
 
     def append_spelling_text(self, chunk: str) -> None:
         """Ajoute un chunk épelé au miroir de la fenêtre (insertion directe hors correction)."""
@@ -1071,18 +1137,26 @@ class PhenixHUD(QWidget):
         if self.symbol_frame.isVisible():
             self.symbol_frame.setVisible(False)
         self.correction_window.open_panel(target_text, alternatives, learn_enabled)
+        # Curseur de référence (fin de proposition) pour le thread STT
+        self._correction_cursor_pos = (
+            self.correction_window.correction_edit.cursorPosition()
+        )
 
     def _apply_close_correction_slot(self) -> None:
         self.correction_window.close_panel()
+        self._correction_cursor_pos = 0
 
-    def _apply_correction_edit_text_slot(self, text: str) -> None:
-        self.correction_window.set_edit_text(text)
+    def _apply_correction_edit_text_slot(self, text: str, cursor: int) -> None:
+        self.correction_window.set_edit_text(text, None if cursor < 0 else cursor)
 
     def _apply_spelling_opened_slot(self, prefill: str, from_correction: bool) -> None:
         # La popup de choix de symbole ne doit pas chevaucher la fenêtre d'épellation
         if self.symbol_frame.isVisible():
             self.symbol_frame.setVisible(False)
+        self._spelling_window_active = True
         self.spelling_window.open_window(prefill, from_correction)
+        # Curseur de référence (fin du pré-rempli) pour le thread STT
+        self._spelling_cursor_pos = self.spelling_window.spell_edit.cursorPosition()
         # Si la fenêtre de correction est ouverte, placer l'épellation dessous
         if self.correction_window.isVisible():
             cg = self.correction_window.frameGeometry()
@@ -1090,9 +1164,30 @@ class PhenixHUD(QWidget):
 
     def _apply_spelling_closed_slot(self) -> None:
         self.spelling_window.close_window()
+        self._spelling_window_active = False
+        self._spelling_cursor_pos = 0
 
-    def _apply_spelling_text_set_slot(self, text: str) -> None:
-        self.spelling_window.set_text(text)
+    def _on_spelling_cursor_moved(self, _old_pos: int, new_pos: int) -> None:
+        # `cursorPositionChanged` transmet (ancienne, nouvelle) position.
+        self._spelling_cursor_pos = new_pos
+
+    def _on_correction_cursor_moved(self, _old_pos: int, new_pos: int) -> None:
+        self._correction_cursor_pos = new_pos
+
+    def active_insert_position(self) -> int:
+        """Position du curseur du champ CIBLE de l'insertion (mode épellation).
+
+        Fenêtre d'épellation ouverte → son champ ; sinon → le champ de
+        correction. Conçu pour être lu depuis le thread STT : les valeurs sont
+        maintenues en thread GUI (`cursorPositionChanged` + réouverture des
+        fenêtres), aucun widget n'est touché ici.
+        """
+        if self._spelling_window_active:
+            return self._spelling_cursor_pos
+        return self._correction_cursor_pos
+
+    def _apply_spelling_text_set_slot(self, text: str, cursor: int) -> None:
+        self.spelling_window.set_text(text, None if cursor < 0 else cursor)
 
     def _apply_spelling_append_slot(self, chunk: str) -> None:
         self.spelling_window.append_text(chunk)

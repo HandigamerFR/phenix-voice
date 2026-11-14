@@ -172,6 +172,25 @@ class PlausibilityArbitrator:
             a.strip() for a in alternatives if a.strip() and a.strip() != raw_text.strip()
         ]
 
+        # 0. Court-circuit d'empreinte acoustique DTW — TOUJOURS prioritaire (décision
+        # utilisateur 14/11) : quand `AcousticCommandProtector.match_command` a matché
+        # une empreinte de la voix de l'utilisateur, le texte du template de commande
+        # prime sur le rendu du STT, même confiant (ex: « Coupé Phoenix » à confiance 0,8
+        # au lieu de « Couper Phénix » → était injecté en dictée au lieu d'être exécuté).
+        # Sécurité contre une dictée longue qui matcherait DTW par accident : les faux
+        # positifs sont filtrés en amont par `match_command`, qui n'accepte que les
+        # segments de 0,25 à 1,85 s, impose une distance DTW ≤ 0,16 (seuil strict) et
+        # compare contre des templates courts (« Couper Phénix », « Phénix au repos »…) :
+        # un long segment de dictée renvoie donc `None` et n'atteint jamais ce bloc.
+        if acoustic_fp_match is not None:
+            return ArbitratedResult(
+                best_text=acoustic_fp_match[0],
+                ranked_alternatives=candidates[:9],
+                plausibility_score=0.90,
+                was_adapted=True,
+                adaptation_reason=f"Empreinte acoustique DTW ({acoustic_fp_match[0]!r})",
+            )
+
         # 1. Cas d'un énoncé court isolé (potentielle commande vocale ou ponctuation isolée <= 2,6s)
         norm_raw = _normalize(raw_text)
         word_count = len(norm_raw.split())
@@ -205,16 +224,6 @@ class PlausibilityArbitrator:
                         was_adapted=True,
                         adaptation_reason=f"Alternative commande plausible ({alt!r} -> {target_cmd!r})",
                     )
-
-            # Court-circuit d'empreinte acoustique directe uniquement si Whisper est très incertain (< 0.45)
-            if acoustic_fp_match is not None and acoustic_confidence < 0.45:
-                return ArbitratedResult(
-                    best_text=acoustic_fp_match[0],
-                    ranked_alternatives=candidates[:9],
-                    plausibility_score=0.90,
-                    was_adapted=True,
-                    adaptation_reason=f"Empreinte acoustique DTW ({acoustic_fp_match[0]!r})",
-                )
 
         # 2. Re-classement des hypothèses de Whisper par score combiné (Acoustique + Plausibilité française)
         scored_candidates: list[tuple[float, str, float]] = []

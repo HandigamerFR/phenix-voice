@@ -25,6 +25,9 @@ from phenix_voice.os_control.injector import (
     send_text_via_messages,
     user32 as _injector_user32,
 )
+# Constante de typographie partagée (postprocess/coherence n'importe PAS
+# os_control : aucun import circulaire).
+from phenix_voice.postprocess.coherence import NO_SPACE_BEFORE
 
 VK_LEFT = 0x25
 VK_RIGHT = 0x27
@@ -140,12 +143,16 @@ class ShadowBuffer:
             **bs_stats,
         )
 
-        # Préserver l'espace initial si l'ancien segment commençait par une espace
+        # Préserver l'espace initial si l'ancien segment commençait par une espace,
+        # SAUF si le nouveau texte commence par un signe (« ,il y a encore… ») :
+        # on ne force jamais d'espace devant la ponctuation (typographie partagée
+        # avec `adapt_chunk_to_context` via `NO_SPACE_BEFORE`).
         formatted_new = new_text
         if (
             old_seg.injected_text.startswith(" ")
             and not formatted_new.startswith(" ")
             and not formatted_new.startswith("\n")
+            and formatted_new[:1] not in NO_SPACE_BEFORE
         ):
             formatted_new = " " + formatted_new
 

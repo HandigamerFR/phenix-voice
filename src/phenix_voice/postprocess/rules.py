@@ -63,6 +63,12 @@ def command_keys(text: str) -> list[str]:
 
     Principe de design : le code reste en français naturel ; seule cette clé de
     comparaison tolère les écarts de transcription.
+
+    Un texte **purement symbolique** (« , », « ! », « … »…) ne produit aucun mot
+    : le signe lui-même devient alors la clé de repli, afin qu'une forme orale
+    dont le texte ÉCRIT est un symbole reste ajoutable ET retrouvée au lookup
+    (round-trip `add` → recherche, `SpokenFormStore`). Un texte vide ou réduit
+    à des espaces reste SANS clé.
     """
     keys: list[str] = []
 
@@ -76,7 +82,12 @@ def command_keys(text: str) -> list[str]:
     lowered = text.strip().lower().replace("’", "'")
     natural = re.sub(r"[.!?,;:«»\"…–—-]+", " ", lowered)
     _add(natural)
-    if not natural:
+    if not natural.strip():
+        # Texte purement symbolique (ou vide/blanc) : aucun mot à comparer.
+        # Si un signe non alphanumérique subsiste, il sert de clé valide —
+        # même fonction déterministe côté ajout ET côté recherche.
+        if lowered:
+            _add(lowered)
         return keys
 
     # 2) Variantes repliées (filet anti-écarts STT) : accents retirés, puis

@@ -93,6 +93,88 @@ def test_arbitrator_caps_alternatives_at_nine() -> None:
     assert len(res.ranked_alternatives) > 0
 
 
+def test_arbitrator_dtw_fingerprint_wins_over_confident_stt() -> None:
+    """Le filet acoustique DTW doit prendre le dessus MÊME sur un STT confiant.
+
+    Constat terrain 14/11 : « Couper Phénix » rendu « Coupé Phoenix » par Whisper avec
+    une confiance ~0,8 était injecté comme dictée, alors que l'empreinte DTW de la
+    commande (enregistrée avec la voix de l'utilisateur) avait matché.
+    """
+    arb = PlausibilityArbitrator(enable_strict_dictionary=False)
+    res = arb.arbitrate(
+        raw_text="Coupé Phoenix",
+        alternatives=["Couper phœnix"],
+        acoustic_confidence=0.8,
+        audio_duration_s=1.4,
+        acoustic_fp_match=("Couper Phénix", 0.1),
+    )
+    assert res.best_text == "Couper Phénix"
+    assert res.was_adapted
+    assert "DTW" in res.adaptation_reason
+
+    # Le texte forcé repart vers processor.process() dans main.py : la classification
+    # d'intention se fait donc sur le template → MUTE_MIC, pas une dictée.
+    proc = HybridPunctuationProcessor(enable_strict_dictionary=False)
+    assert proc.process(res.best_text).intent == VoiceIntentType.MUTE_MIC
+
+
+def test_arbitrator_dtw_fingerprint_still_works_at_low_confidence() -> None:
+    """Le cas historique basse confiance (< 0,45) continue de fonctionner à l'identique."""
+    arb = PlausibilityArbitrator(enable_strict_dictionary=False)
+    res = arb.arbitrate(
+        raw_text="Véronique.",
+        alternatives=[],
+        acoustic_confidence=0.2,
+        audio_duration_s=1.2,
+        acoustic_fp_match=("Phénix au repos", 0.12),
+    )
+    assert res.best_text == "Phénix au repos"
+    assert res.was_adapted
+    assert "DTW" in res.adaptation_reason
+
+    proc = HybridPunctuationProcessor(enable_strict_dictionary=False)
+    assert proc.process(res.best_text).intent == VoiceIntentType.SLEEP
+
+
+def test_arbitrator_dtw_fingerprint_wins_even_on_verbose_stt_output() -> None:
+    """Le filet DTW prime aussi si le STT déborde (>6 mots sur un segment court) :
+    la décision utilisateur est qu'aucune autre branche (dont « énoncé court isolé »)
+    ne doit le court-circuiter quand `acoustic_fp_match` est renseigné.
+    """
+    arb = PlausibilityArbitrator(enable_strict_dictionary=False)
+    res = arb.arbitrate(
+        raw_text="Couper Couper phoenix phoenix euh voilà bon d'accord",
+        alternatives=[],
+        acoustic_confidence=0.85,
+        audio_duration_s=1.7,
+        acoustic_fp_match=("Couper Phénix", 0.09),
+    )
+    assert res.best_text == "Couper Phénix"
+    assert "DTW" in res.adaptation_reason
+
+
+def test_arbitrator_long_dictation_without_dtw_match_is_unchanged() -> None:
+    """Une dictée longue de texte pur n'est jamais détournée par le filet DTW.
+
+    Risque couvert : un segment long de dictée pure qui matcherait DTW par accident.
+    En pratique `AcousticCommandProtector.match_command` rejette les segments hors
+    [0,25 s ; 1,85 s] et impose une distance ≤ 0,16 sur un template court, donc il
+    renvoie `None` sur une longue dictée — ici on vérifie que l'arbitre, avec
+    `acoustic_fp_match=None`, préserve intégralement le texte du STT.
+    """
+    arb = PlausibilityArbitrator(enable_strict_dictionary=False)
+    raw = "La loi a été adoptée par le parlement et la séance a été levée ensuite."
+    res = arb.arbitrate(
+        raw_text=raw,
+        alternatives=[],
+        acoustic_confidence=0.9,
+        audio_duration_s=6.5,
+        acoustic_fp_match=None,
+    )
+    assert res.best_text == raw
+    assert not res.was_adapted
+
+
 def test_calibrated_12_commands_on_user_voice(
     shared_engine: WhisperDirectMLEngine,
 ) -> None:

@@ -108,6 +108,42 @@ def test_personal_form_can_seed_symbol(tmp_path) -> None:
     assert store.apply("contact arobase professionnelle ici") == "contact@ici"
 
 
+def test_personal_spoken_form_accepts_symbolic_written_text(tmp_path) -> None:
+    """Écrit PUREMENT symbolique (« Birgule, » → « , ») : accepté ET retrouvé.
+
+    `command_keys(",")` ne renvoie plus une clé vide : le signe lui-même sert
+    de clé de repli, de sorte que le cycle ajout → recherche fasse round-trip.
+    """
+    store = SpokenFormStore(tmp_path / "forms.json")
+    assert store.add("Birgule, ", ",")
+    # Lookup : la forme entendue est retrouvée (round-trip add → recherche)
+    assert store.apply("birgule") == ","
+    assert store.apply("Birgule") == ","
+
+    # Persistance : un nouveau store recharge la forme symbolique
+    store2 = SpokenFormStore(tmp_path / "forms.json")
+    assert store2.apply("birgule") == ","
+
+    # Une forme alphabétique existante continue de fonctionner à côté
+    assert store.add("truc machin", "chose élégante")
+    assert store.apply("truc machin") == "chose élégante"
+
+
+def test_personal_spoken_form_refusals_still_hold(tmp_path) -> None:
+    store = SpokenFormStore(tmp_path / "forms.json")
+    # Écrit/entendu identique → refus
+    assert not store.add("Birgule,", "Birgule,")
+    assert not store.add(",", ",")
+    # Entendu vide ou réduit à des espaces → refus
+    assert not store.add("", ",")
+    assert not store.add("   ", ",")
+    # Écrit vide ou réduit à des espaces → refus
+    assert not store.add("Birgule,", "")
+    assert not store.add("Birgule,", "   ")
+    # Trop court côté entendu → refus (comportement historique)
+    assert not store.add("a", "b")
+
+
 def test_existing_punctuation_rules_still_win() -> None:
     # « virgule » / « deux points » restent gérés par SPOKEN_PUNCTUATION_RULES
     proc = HybridPunctuationProcessor()

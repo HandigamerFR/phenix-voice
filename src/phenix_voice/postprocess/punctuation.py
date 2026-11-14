@@ -417,6 +417,45 @@ def _nato_fuzzy(token: str) -> str | None:
             return letter
     return None
 
+
+def _edit_distance_at_most_two(a: str, b: str) -> bool:
+    """Vrai si `a` et `b` diffèrent d'au plus deux insertions/suppressions/substitutions."""
+    if abs(len(a) - len(b)) > 2:
+        return False
+    # Distance de Levenshtein (coûts unitaires) — mots-clés très courts.
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        cur = [i] + [0] * len(b)
+        for j, cb in enumerate(b, start=1):
+            cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb))
+        prev = cur
+    return prev[-1] <= 2
+
+
+def _nato_space_fuzzy(token: str) -> bool:
+    """Tolérance sur le jeton « espace » **uniquement** (mode épellation).
+
+    Deux familles de formes acceptées, jetons de >= 5 lettres :
+    - écart <= 1 sur « espace » / « space » (petites fautes de STT) ;
+    - « s » final de pluriel dont la racine est un PRÉFIXE exact de la famille
+      (« espaces » → « espace », « spaces » → « space », « espas » → « espa… ») :
+      le « s » du pluriel s'entend souvent à la place de « ce » (« espas » ≈
+      « espaces » — écart 2, d'où ce second critère).
+
+    Aucune autre famille n'est acceptée : un mot lointain (« voiture »,
+    « espagne »…) ne doit JAMAIS devenir un espace.
+    """
+    if len(token) < 5:
+        return False
+    if any(_edit_distance_at_most_one(token, key) for key in NATO_SPACE_TOKENS):
+        return True
+    if token.endswith("s"):
+        stem = token[:-1]
+        if len(stem) >= 4 and any(key.startswith(stem) for key in NATO_SPACE_TOKENS):
+            return True
+    return False
+
+
 DIGIT_WORDS: dict[str, str] = {
     "zéro": "0",
     "zero": "0",
@@ -489,6 +528,8 @@ def text_to_nato_spelling(raw_text: str) -> str:
         norm.replace("trait d union", "trait-d-union")
         .replace("x ray", "x-ray")
         .replace("fox trot", "fox-trot")
+        # « espace » scindé par le STT (« es pace ») : reconstitué comme « x ray »
+        .replace("es pace", "espace")
     )
     tokens = norm.split()
     out: list[str] = []
@@ -554,7 +595,7 @@ def text_to_nato_spelling(raw_text: str) -> str:
             out.append(NATO_ALPHABET[tok])
         elif t_compact in NATO_ALPHABET:
             out.append(NATO_ALPHABET[t_compact])
-        elif tok in NATO_SPACE_TOKENS:
+        elif tok in NATO_SPACE_TOKENS or _nato_space_fuzzy(tok):
             out.append(" ")
         elif tok in NATO_EMPTY_TOKENS or t_compact in NATO_EMPTY_TOKENS:
             if "tiret" in tok or "moins" in tok:
