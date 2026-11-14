@@ -367,6 +367,50 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 
 ---
 
+## Session 11 - 14 Novembre 2026 (après-midi) : Test complet utilisateur, purges, analyse forensique & 5 correctifs (`79149e1`)
+
+### 1. Test complet de l'utilisateur (12:15–13:00, Notepad++)
+- **Texte dicté reconstruit** depuis `logs/injection_trace.jsonl` (script `$TEMP/opencode/reconstruct_dictation.py`) : retour d'expérience détaillé avec artefacts STT (« goiches ch'il », « Pizdir », « Véronique. » pour « au repos »…).
+- **Précisions recueillies via l'outil `question`** (5 défauts clarifiés, cf. §3) ; vérifié : « Corriger ça » = 12 reconnaissances/exécutions dans la session (y compris déformé « Grégale ça »), le mode épellation rejette explicitement, le filet OTAN absent faute d'enregistrement `nato_*`.
+
+### 2. Purges demandées par l'utilisateur (remise à zéro avant nouveau système)
+- **`user_data/corrections_learned/` vidé** (8 WAV + `corrections_log.jsonl`) : l'utilisateur repart à zéro avec le nouveau système de correction (variantes d'accord, casse, 9 choix) ; la matière première LoRA des anciennes « Corriger & Apprendre » est abandonnée volontairement.
+- **Conservés** : `user_data/learned_rules.json` (formes orales de commandes) et `user_data/snapshots/` (copies de sauvegarde) — demandes explicites non incluses.
+- Clarifié avec l'utilisateur : **aucun entraînement n'est possible aujourd'hui** (étape 5 non implémentée : ni MFA, ni LoRA, ni script ; corpus trop maigre de toute façon) — le studio ne fait qu'enregistrer.
+
+### 3. Analyse forensique → 5 causes racines (exploration en sous-agent, rapport `ses_e26008fe…`)
+| # | Symptôme remonté | Cause racine localisée |
+|---|---|---|
+| 1 | Espace avant la virgule (` ,il y a…`) | `shadow_buffer.replace_last` réajoutait l'espace initial **sans tester** `NO_SPACE_BEFORE` (constante déjà existante dans `coherence.py`) |
+| 2 | Épellation toujours insérée en fin (clic au milieu ignoré) | `SpellingWindow.append_text` = concaténation + `setText` ; aucun `cursorPosition()`/`insert()` côté UI, `main.py` réécrivait tout `proposed` en fin |
+| 3 | « espace » non reconnu + espace manuel ajouté entre 2 mots épelés supprimé au souffle suivant | (a) `NATO_SPACE_TOKENS` en correspondance **exacte** sans tolérance (contraire aux 26 lettres) ; (b) chaîne de 4 `.strip()` destructeurs (`main.py` ×3, `hud.py` ×1) puis réécriture totale du champ |
+| 4 | 🔑 « Forme orale » ne fait rien (log `spoken_form_added ok:false` ×2 pour « Birgule, ») | `SpokenFormStore.add` refuse tout texte sans clé alphanumérique : `command_keys(",")` = `[]` (ponctuation réduite à des espaces dans `rules.py`) |
+| 5 | « Couper Phénix » → STT `Coupé Phoenix` injecté en dictée alors que l'empreinte DTW `cmd_couper_phenix` matchait | `plausibility.py` : override DTW conditionné à `acoustic_confidence < 0.45` — la confiance STT (0.8) primait sur la voix enregistrée |
+
+### 4. Décision utilisateur : filet DTW = priorité absolue
+- Validé par `question` : **si `acoustic_fp_match is not None`, le DTW gagne toujours** (le seuil de distance DTW de `match_command` filtre déjà les faux positifs ; segments 0,25–1,85 s, distance ≤ 0,16).
+
+### 5. Implémentation en 3 sous-agents parallèles (fichiers strictement découplés)
+- **Agent A (défauts 1 + 4)** : `shadow_buffer.py` import `NO_SPACE_BEFORE` + test `formatted_new[:1]` (pas d'`IndexError`) ; `rules.py` `command_keys` : la branche de repli accepte un signe non vide comme clé (round-trip add→`_build_index`→`_substitute` vérifié sur tous les usages — `punctuation.py`/`symbols.py` non impactés, entrées de tables = phrases FR). Messages HUD existants déjà exacts (succès/refus).
+- **Agent B (défauts 2 + 3)** : `hud.py` +118/−23 — `spell_edit.insert(chunk)` sous drapeau programmatique, positions de curseur **maintenues en thread GUI** (le worker STT ne lit que des `int`, `active_insert_position()`), signaux `Signal(str, int)` avec sentinelle `-1` = conserver ; fonction pure `insert_chunk_at_cursor()` testable sans contrôleur ; les 4 `.strip()` du flux épellation/correction → `strip("\r\n")` (les strips d'application vers le document et `coherence.py` **conservés** — dictée normale inchangée) ; bonus `_nato_space_fuzzy` (famille « espace »/« space » seule : écart ≤ 1 ou pluriel à racine exacte — **découverte : `distance("espas","espace") = 2`**, d'où le 2ᵉ critère ; normalisation « es pace » → « espace »). Piège PySide6 : `cursorPositionChanged` transmet **(ancienne, nouvelle)**.
+- **Agent C (défaut 5)** : `plausibility.py` — bloc DTW **court-circuit en tête** d'`arbitrate()` (avant confusions phonétiques, alternatives, énoncé court), condition réduite à `acoustic_fp_match is not None` ; `adaptation_reason` DTW conservé ; commentaire documentant le risque dictée longue (écarté par le filtre durée/distance).
+- **Non traité (signalé)** : STT rendu **vide** + match DTW → toujours ignoré (`return empty` avant le bloc DTW, comportement inchangé) — à décider.
+
+### 6. Validations
+- **Suite : `131 passed, 3 deselected`** (101 → 131, +30 tests : `test_shadow_spacing` ×4, `test_symbols` +2, `test_spelling_cursor` ×14, `test_space_token_fuzzy` ×6, `test_phase2` +4) — relancée par la session parente après intégration des 3 agents.
+- **Smoke offscreen `smoke_fix5.py`** : insertion au milieu `aXbc`, espace final conservé, forme orale `,` acceptée, arbitre DTW avec conf 0.85 → « Couper Phénix », `CorrectionWindow` réelle → **SMOKE OK**.
+- **Commit `79149e1` poussé** (11 fichiers, +706/−46).
+
+### 7. En parallèle : inventaire de l'aide Dragon (sous-agent en cours)
+- CHM extraits dans `$TEMP/opencode/dragon_help/` (`cmd_browser.chm` = navigateur de commandes + `tagent_fra.chm` = aide FR, 224 pages) via 7-Zip → rapport `[DÉJÀ]/[PARTIEL]/[ABSENT]` en attente, servira de base à la discussion **lexique multi-langues / SQLite** ouverte par l'utilisateur (ma position : inutile pour le lexique d'accords chargé en mémoire, pertinent probablement à l'étape 5 — phonétique/fréquences/écritures concurrentes).
+
+### 8. Prochaine étape prévue
+1. Rapport inventaire Dragon → discussion fonctionnalités + lexique/langues (choix utilisateur).
+2. **Étape 2 (reste)** : enregistrement studio (26 `nato_*` + 12 `corpus_*`) ; navigation en mode épellation (curseur/suppr — le clic-au-curseur est fait, il manque les commandes vocales de navigation).
+3. Étapes 3 → 4 → 5 (LoRA).
+
+---
+
 ## Session 10 - 14 Novembre 2026 : Studio mixte (prompts OTAN + corpus), filet acoustique d'épellation, commandes de casse & variantes d'accord via Lexique383
 
 ### 1. Recherche « comment font les systèmes existants ? » (demande utilisateur, avant code)
