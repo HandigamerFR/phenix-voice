@@ -18,6 +18,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication
 
 from phenix_voice.main import PhenixVoiceController, insert_chunk_at_cursor
@@ -224,3 +226,89 @@ def test_enter_spelling_mode_prefill_keeps_manual_spaces() -> None:
     assert hud.showed == [("mot ", True)]            # pas de .strip() sur le pré-rempli
     assert fake._pending_correction_text == "mot "
     assert fake._spelling_from_correction is True
+
+
+# --- C. Clics partagés + log de diagnostic (décision utilisateur 15/11) -----
+
+
+def test_click_on_the_correction_field_while_spelling_is_open_is_not_ignored(
+    qapp,
+) -> None:
+    # Les deux champs sont des MIROIRS du même `_pending_correction_text` :
+    # un clic dans le champ Correction pendant l'épellation doit compter.
+    hud = _make_hud()
+    hud.show_correction_panel("mot", ["mot 2"], learn_enabled=True)
+    hud.show_spelling_window("mot", from_correction=True)
+    assert hud.active_insert_position() == 3        # curseur en fin, avant clic
+    # Clic en tête du champ correction (x=1 px → 1re frontière de caractère)
+    QTest.mouseClick(
+        hud.correction_window.correction_edit,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(1, 5),
+    )
+    clicked = hud.correction_window.correction_edit.cursorPosition()
+    assert clicked == 0                             # le clic est bien tombé dedans
+    assert hud.active_insert_position() == clicked  # …et n'est plus ignoré
+
+
+def test_click_on_spell_edit_drives_the_next_insertion(qapp) -> None:
+    hud = _make_hud()
+    hud.show_correction_panel("mot", ["mot 2"], learn_enabled=True)
+    hud.show_spelling_window("mot", from_correction=True)
+    assert hud.active_insert_position() == 3        # fin du pré-rempli
+    QTest.mouseClick(
+        hud.spelling_window.spell_edit,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(1, 10),
+    )
+    assert hud.spelling_window.spell_edit.cursorPosition() == 0
+    assert hud.active_insert_position() == 0        # position partagée cohérente
+    # Le prochain chunk s'insère BIEN à la position cliquée (pas en fin)
+    text, cursor = insert_chunk_at_cursor(
+        "mot", "X", hud.active_insert_position()
+    )
+    assert text == "Xmot"
+    assert cursor == 1
+
+
+def test_click_on_spell_edit_emits_edit_field_clicked(qapp) -> None:
+    hud = _make_hud()
+    spy = QSignalSpy(hud.signals.edit_field_clicked)
+    hud.show_spelling_window("mot", from_correction=True)
+    QTest.mouseClick(
+        hud.spelling_window.spell_edit,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(1, 10),
+    )
+    assert spy.count() == 1                         # un seul log par clic
+    assert list(spy.at(0)) == [
+        "epellation",
+        hud.spelling_window.spell_edit.cursorPosition(),
+    ]
+
+
+def test_click_on_the_spelling_window_title_logs_the_window(qapp) -> None:
+    # Le titre est un QLabel : il n'accepte pas le clic et Qt le propage au
+    # parent (la fenêtre) — le log doit le capter, une seule fois.
+    hud = _make_hud()
+    spy = QSignalSpy(hud.signals.edit_field_clicked)
+    hud.show_spelling_window("mot", from_correction=True)
+    QTest.mouseClick(
+        hud.spelling_window.title_label,
+        Qt.MouseButton.LeftButton,
+        pos=QPoint(2, 5),
+    )
+    assert spy.count() == 1
+    assert list(spy.at(0)) == ["fenetre_epellation", -1]
+
+
+def test_spell_edit_is_the_first_widget_and_tall_enough(qapp) -> None:
+    # Champ remonté EN HAUT du layout et agrandi 30 → 60 px (15/11) : cible
+    # facile à viser avec un pointage imprécis.
+    win = SpellingWindow()
+    layout = win.layout()
+    assert layout is not None
+    first_item = layout.itemAt(0)
+    assert first_item is not None
+    assert first_item.widget() is win.spell_edit     # indice 0 = le champ
+    assert win.spell_edit.minimumHeight() >= 60

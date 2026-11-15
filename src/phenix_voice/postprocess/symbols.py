@@ -299,6 +299,58 @@ def spelling_symbol(token: str) -> str | None:
     return None
 
 
+def split_spoken_fragment(heard: str, written: str) -> tuple[str, str] | None:
+    """Extrait le fragment qui diffère entre « entendu » et « écrit » (décision 15/11).
+
+    On aligne les deux phrases jeton à jeton (préfixe puis suffixe communs,
+    comparaison normalisée via `command_keys` — accents/casse/ponctuation de bord
+    ignorés) et on ne garde que la partie qui change :
+    « … mon application Bergune. » / « … mon application Berghine » →
+    (`Bergune.`, `Berghine`). La règle se déclenche ainsi au milieu d'une phrase
+    ET sur le mot seul ; un fragment non exploitable renvoie `None` (repli sur
+    la phrase entière).
+    """
+    hw = (heard or "").split()
+    ww = (written or "").split()
+    if not hw or not ww:
+        return None
+
+    def _norm(token: str) -> str:
+        keys = command_keys(token)
+        return keys[0] if keys else token
+
+    hn = [_norm(t) for t in hw]
+    wn = [_norm(t) for t in ww]
+
+    # Préfixe commun, jeton à jeton, s'arrêtant au premier écart ou à la fin
+    # de l'une des deux séquences.
+    p = 0
+    while p < len(hn) and p < len(wn) and hn[p] == wn[p]:
+        p += 1
+
+    # Suffixe commun depuis les fins, sans chevauchement avec le préfixe ni
+    # entre les deux côtés.
+    s = 0
+    while (
+        s < len(hn) - p
+        and s < len(wn) - p
+        and hn[len(hn) - 1 - s] == wn[len(wn) - 1 - s]
+    ):
+        s += 1
+
+    if p == 0 and s == 0:
+        return None
+    heard_frag = " ".join(hw[p : len(hw) - s])
+    written_frag = " ".join(ww[p : len(ww) - s])
+    if not heard_frag or not written_frag:
+        return None
+    if " ".join(_norm(t) for t in heard_frag.split()) == (
+        " ".join(_norm(t) for t in written_frag.split())
+    ):
+        return None
+    return heard_frag, written_frag
+
+
 class SpokenFormStore:
     """Dictionnaire personnel de formes orales persisté dans
     `user_data/spoken_forms.json` (« si tu entends A, écris B »).
@@ -313,6 +365,7 @@ class SpokenFormStore:
         self.forms: dict[str, str] = {}
         self._index: dict[str, tuple[str, bool]] = {}
         self._max_words = 1
+        self.last_recorded: tuple[str, str] | None = None
         self._load()
 
     def _rebuild_index(self) -> None:
@@ -342,23 +395,40 @@ class SpokenFormStore:
         )
 
     def add(self, heard_text: str, written_text: str) -> bool:
-        """Enregistre « si tu entends `heard`, écris `written` ». Refuse si vide/identique."""
+        """Enregistre « si tu entends `heard`, écris `written` ». Refuse si vide/identique.
+
+        Candidats dans l'ordre : le fragment qui diffère d'abord (décision
+        15/11 — une clé « phrase entière » ne se déclenche jamais en pratique),
+        sinon la phrase entière. `last_recorded` expose le couple réellement
+        enregistré (`None` si refus).
+        """
+        self.last_recorded = None
         heard = (heard_text or "").strip()
         written = (written_text or "").strip()
         if not heard or not written:
             return False
-        heard_keys = command_keys(heard)
-        written_keys = command_keys(written)
-        if not heard_keys or not written_keys:
-            return False
-        if heard_keys[0] == written_keys[0]:
-            return False
-        if len(heard_keys[0]) < 2:
-            return False
-        self.forms[heard] = written
-        self._rebuild_index()
-        self._save()
-        return True
+        candidates: list[tuple[str, str]] = []
+        fragment = split_spoken_fragment(heard, written)
+        if fragment is not None:
+            candidates.append(fragment)
+        candidates.append((heard, written))
+        for cand_heard, cand_written in candidates:
+            if not cand_heard or not cand_written:
+                continue
+            heard_keys = command_keys(cand_heard)
+            written_keys = command_keys(cand_written)
+            if not heard_keys or not written_keys:
+                continue
+            if heard_keys[0] == written_keys[0]:
+                continue
+            if len(heard_keys[0]) < 2:
+                continue
+            self.forms[cand_heard] = cand_written
+            self._rebuild_index()
+            self._save()
+            self.last_recorded = (cand_heard, cand_written)
+            return True
+        return False
 
     def apply(self, text: str) -> str:
         """Applique les formes personnelles (priorité sur les règles générales)."""

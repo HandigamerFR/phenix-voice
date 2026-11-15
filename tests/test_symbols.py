@@ -144,6 +144,65 @@ def test_personal_spoken_form_refusals_still_hold(tmp_path) -> None:
     assert not store.add("a", "b")
 
 
+def test_spoken_form_records_differing_fragment_only(tmp_path) -> None:
+    """Cas réel 15/11 : seul le fragment qui diffère est enseigné (« Bergune » →
+    « Berghine »), pas la phrase entière qui ne se répéterait jamais."""
+    store = SpokenFormStore(tmp_path / "forms.json")
+    heard = "Je teste une fois de plus mon application Bergune."
+    written = "Je teste une fois de plus mon application Berghine"
+    assert store.add(heard, written)
+    # La phrase complète n'est PAS en clé
+    assert heard not in store.forms
+    assert store.last_recorded == ("Bergune.", "Berghine")
+    # La règle se déclenche au milieu d'une phrase
+    assert store.apply("écoute Bergune s'il te plaît") == (
+        "écoute Berghine s'il te plaît"
+    )
+
+
+def test_spoken_form_fragment_edits_middle_of_sentence(tmp_path) -> None:
+    store = SpokenFormStore(tmp_path / "forms.json")
+    assert store.add("il a dit salut hier", "il a dit bonjour hier")
+    assert store.last_recorded == ("salut", "bonjour")
+    assert store.forms == {"salut": "bonjour"}
+    assert store.apply("il a dit salut hier") == "il a dit bonjour hier"
+
+
+def test_spoken_form_falls_back_to_full_sentence_when_word_removed(
+    tmp_path,
+) -> None:
+    """Suppression du dernier mot (15/11) : fragment written vide → repli sur
+    la phrase entière, `ok=True` et `last_recorded` = le couple complet."""
+    store = SpokenFormStore(tmp_path / "forms.json")
+    heard = "Je teste une fois de plus mon application Bergune."
+    written = "Je teste une fois de plus mon application"
+    assert store.add(heard, written)
+    assert store.last_recorded == (heard, written)
+    assert store.forms == {heard: written}
+
+
+def test_spoken_form_refusal_keeps_last_recorded_none(tmp_path) -> None:
+    store = SpokenFormStore(tmp_path / "forms.json")
+    assert not store.add("truc machin", "truc machin")
+    assert store.last_recorded is None
+    assert store.forms == {}
+
+
+def test_spoken_form_fragment_roundtrip_disk(tmp_path) -> None:
+    """Le fragment enseigné survit à la persistance (nouveau store sur le même
+    fichier → `apply` fonctionne)."""
+    path = tmp_path / "forms.json"
+    store = SpokenFormStore(path)
+    assert store.add(
+        "Je teste une fois de plus mon application Bergune.",
+        "Je teste une fois de plus mon application Berghine",
+    )
+    store2 = SpokenFormStore(path)
+    assert store2.apply("écoute Bergune s'il te plaît") == (
+        "écoute Berghine s'il te plaît"
+    )
+
+
 def test_existing_punctuation_rules_still_win() -> None:
     # « virgule » / « deux points » restent gérés par SPOKEN_PUNCTUATION_RULES
     proc = HybridPunctuationProcessor()

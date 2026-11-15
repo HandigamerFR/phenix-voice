@@ -180,6 +180,8 @@ class PhenixVoiceController:
             on_enter_spelling=self.enter_spelling_mode,
             on_spelling_text_changed=self.set_spelling_text_from_ui,
             on_close_spelling=self._exit_spelling_mode,
+            # Clic diagnostique sur un champ/fenêtre (log distance 15/11)
+            on_edit_field_clicked=self._on_edit_field_clicked,
         )
 
         self.segmenter = BreathSegmenter(
@@ -222,6 +224,15 @@ class PhenixVoiceController:
         self.processor.reset_context()
         self.shadow_buffer.clear_context()
         self.injection_logger.log_action("cursor_context_cleared", source=source, **details)
+
+    def _on_edit_field_clicked(self, field: str, cursor: int) -> None:
+        # Clic diagnostique (15/11) : journalise le widget visé (champ
+        # épellation/correction, ou la fenêtre elle-même = clic raté sur un
+        # label) + la position de curseur, pour confirmer à distance si la
+        # cible est bien touchée.
+        self.injection_logger.log_action(
+            "edit_field_clicked", field=field, cursor=cursor
+        )
 
     def _on_speech_state_change(self, speaking: bool) -> None:
         if self.engine is None or not self._running or self.is_muted or self.is_sleeping:
@@ -359,13 +370,21 @@ class PhenixVoiceController:
             return
         heard = (last.raw_text or "").strip()
         ok = self.processor.spoken_forms.add(heard, written)
+        # Le fragment réellement enseigné (diff) si dispo, sinon la phrase entière
+        recorded = getattr(self.processor.spoken_forms, "last_recorded", None)
+        h, w = recorded if (ok and recorded) else (heard, written)
         if ok:
-            msg = f"[Forme orale ajoutée : « {heard} » → « {written} »]"
+            msg = f"[Forme orale ajoutée : « {h} » → « {w} »]"
         else:
             msg = "[Forme orale non ajoutée (texte identique ou trop court)]"
         self.hud.set_transcript(msg, 0.0)
         self.injection_logger.log_action(
-            "spoken_form_added", heard=heard, written=written, ok=ok
+            "spoken_form_added",
+            heard=heard,
+            written=written,
+            form_heard=h,
+            form_written=w,
+            ok=ok,
         )
 
     def toggle_correction_learn_mode(self) -> None:

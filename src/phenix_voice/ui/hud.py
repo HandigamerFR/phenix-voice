@@ -16,7 +16,7 @@ from __future__ import annotations
 import ctypes
 from enum import Enum
 from typing import Callable
-from PySide6.QtCore import QPoint, Qt, Signal, QObject
+from PySide6.QtCore import QEvent, QPoint, Qt, Signal, QObject
 from PySide6.QtGui import QFont, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -100,6 +100,10 @@ class HUDSignals(QObject):
     help_toggled = Signal(str, bool)  # (help_text, visible)
     symbol_choice_requested = Signal(str, list)  # (forme dictée, libellés des choix 1/2)
     symbol_choice_hidden = Signal()
+    # Clic diagnostique sur un champ/fenêtre (correction ou épellation) :
+    # (« epellation » | « correction » | « fenetre_epellation » |
+    # « fenetre_correction », position curseur ou -1 si non concerné)
+    edit_field_clicked = Signal(str, int)
 
 
 class CorrectionWindow(QWidget):
@@ -437,6 +441,9 @@ class SpellingWindow(QWidget):
     - **Hors correction** : le texte épelé est inséré **directement dans
       l'éditeur cible** jusqu'à la sortie (« Fin épellation » /
       « Passer en mode dictée » / ✕) ; le champ sert de miroir en lecture seule.
+    - **Décision 15/11** : le champ est **remonté en haut** du layout et
+      **agrandi (30 → 60 px)** — l'utilisateur corrige avec un pointage
+      souris imprécis et ratait la petite cible ; titre/boutons passent après.
     """
 
     def __init__(
@@ -505,7 +512,22 @@ class SpellingWindow(QWidget):
         outer.setContentsMargins(10, 8, 10, 8)
         outer.setSpacing(6)
 
-        # Ligne 1 : titre + vider + fermer
+        # Ligne 1 (décision 15/11) : le CHAMP passe EN HAUT, agrandi de 30 à
+        # 60 px — l'utilisateur corrige avec un pointage souris imprécis et
+        # ratait régulièrement la petite cible ; titre/vider/fermer passent
+        # ensuite, puis validation et rappel des règles.
+        self.spell_edit = QLineEdit()
+        self.spell_edit.setObjectName("spellEdit")
+        self.spell_edit.setPlaceholderText(
+            "Mode dictée : le texte épelé s'écrit directement dans l'éditeur (miroir ici)."
+        )
+        self.spell_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # Cible facile à viser : 60 px de haut (était 30 px en fenêtre de 192 px).
+        self.spell_edit.setMinimumHeight(60)
+        self.spell_edit.textChanged.connect(self._on_text_changed)
+        outer.addWidget(self.spell_edit)
+
+        # Ligne 2 : titre + vider + fermer
         header = QHBoxLayout()
         header.setSpacing(8)
         self.title_label = QLabel("🔤 Épellation")
@@ -528,16 +550,6 @@ class SpellingWindow(QWidget):
         self.close_btn.clicked.connect(self._request_close)
         header.addWidget(self.close_btn)
         outer.addLayout(header)
-
-        # Ligne 2 : champ (pré-rempli et modifiable en correction, miroir sinon)
-        self.spell_edit = QLineEdit()
-        self.spell_edit.setObjectName("spellEdit")
-        self.spell_edit.setPlaceholderText(
-            "Mode dictée : le texte épelé s'écrit directement dans l'éditeur (miroir ici)."
-        )
-        self.spell_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.spell_edit.textChanged.connect(self._on_text_changed)
-        outer.addWidget(self.spell_edit)
 
         # Ligne 3 : validation (uniquement depuis la correction)
         self.apply_btn = QPushButton("✅ Appliquer la correction")
@@ -700,6 +712,7 @@ class PhenixHUD(QWidget):
         on_enter_spelling: Callable[[], None] | None = None,
         on_spelling_text_changed: Callable[[str], None] | None = None,
         on_close_spelling: Callable[[], None] | None = None,
+        on_edit_field_clicked: Callable[[str, int], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.on_toggle_mute = on_toggle_mute
@@ -729,6 +742,9 @@ class PhenixHUD(QWidget):
         self.signals.help_toggled.connect(self._apply_help_slot)
         self.signals.symbol_choice_requested.connect(self._apply_symbol_choice_slot)
         self.signals.symbol_choice_hidden.connect(self._apply_symbol_choice_hidden_slot)
+        # Clic diagnostique sur un champ/fenêtre (log distance, décision 15/11)
+        if on_edit_field_clicked is not None:
+            self.signals.edit_field_clicked.connect(on_edit_field_clicked)
 
         # Fenêtre de correction SÉPARÉE (jusqu'à 9 alternatives + validation)
         self.correction_window = CorrectionWindow(
@@ -752,8 +768,12 @@ class PhenixHUD(QWidget):
         # `cursorPositionChanged`, lus par le thread STT via
         # `active_insert_position()` pour l'insertion au curseur en mode
         # épellation (jamais d'accès direct aux widgets depuis le worker).
+        # Les deux champs sont des MIROIRS du même texte en attente :
+        # `_shared_insert_pos` retient le dernier champ TOUCHÉ (clic ou
+        # réécriture programmatique) — le dernier touché fait foi.
         self._spelling_cursor_pos = 0
         self._correction_cursor_pos = 0
+        self._shared_insert_pos: int | None = None
         self._spelling_window_active = False
         self.spelling_window.spell_edit.cursorPositionChanged.connect(
             self._on_spelling_cursor_moved
@@ -761,6 +781,14 @@ class PhenixHUD(QWidget):
         self.correction_window.correction_edit.cursorPositionChanged.connect(
             self._on_correction_cursor_moved
         )
+
+        # Journalisation de chaque clic (widget visé + position) pour
+        # diagnostiquer à distance les clics ratés sur la cible (15/11).
+        # `eventFilter` renvoie TOUJOURS False : aucun événement n'est absorbé.
+        self.spelling_window.spell_edit.installEventFilter(self)
+        self.correction_window.correction_edit.installEventFilter(self)
+        self.spelling_window.installEventFilter(self)
+        self.correction_window.installEventFilter(self)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -1170,21 +1198,62 @@ class PhenixHUD(QWidget):
     def _on_spelling_cursor_moved(self, _old_pos: int, new_pos: int) -> None:
         # `cursorPositionChanged` transmet (ancienne, nouvelle) position.
         self._spelling_cursor_pos = new_pos
+        self._shared_insert_pos = new_pos
 
     def _on_correction_cursor_moved(self, _old_pos: int, new_pos: int) -> None:
         self._correction_cursor_pos = new_pos
+        self._shared_insert_pos = new_pos
 
     def active_insert_position(self) -> int:
-        """Position du curseur du champ CIBLE de l'insertion (mode épellation).
+        """Position d'insertion du chunk suivant (mode épellation/correction).
 
-        Fenêtre d'épellation ouverte → son champ ; sinon → le champ de
-        correction. Conçu pour être lu depuis le thread STT : les valeurs sont
-        maintenues en thread GUI (`cursorPositionChanged` + réouverture des
-        fenêtres), aucun widget n'est touché ici.
+        `spell_edit` et `correction_edit` sont deux MIROIRS du même texte en
+        attente (`_pending_correction_text`) : le dernier champ TOUCHÉ — clic
+        utilisateur OU réécriture programmatique — fait foi
+        (`_shared_insert_pos`, mis à jour par `cursorPositionChanged`).
+        À défaut de champ jamais touché, repli historique : fenêtre d'épellation
+        ouverte → son champ ; sinon → le champ de correction.
+        Conçu pour être lu depuis le thread STT : les valeurs sont maintenues
+        en thread GUI (`cursorPositionChanged` + réouverture des fenêtres),
+        aucun widget n'est touché ici.
         """
+        if self._shared_insert_pos is not None:
+            return self._shared_insert_pos
         if self._spelling_window_active:
             return self._spelling_cursor_pos
         return self._correction_cursor_pos
+
+    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        """Log de chaque clic sur les champs/fenêtres correction + épellation.
+
+        Diagnostique à distance : on sait si le clic a touché le champ, un
+        label (titre/instructions) ou le chrome de la fenêtre, et à quelle
+        position de curseur. Les clics sur `spell_edit`/`correction_edit` sont
+        acceptés par le champ lui-même (aucune propagation vers le parent) :
+        on ne traite donc le press sur les fenêtres QUE pour les fenêtres,
+        pour ne jamais journaliser deux fois un même clic.
+        Renvoie TOUJOURS False : l'événement poursuit son chemin normal.
+        """
+        etype = event.type()
+        if watched is self.spelling_window.spell_edit:
+            if etype == QEvent.MouseButtonRelease:
+                self.signals.edit_field_clicked.emit(
+                    "epellation", self.spelling_window.spell_edit.cursorPosition()
+                )
+        elif watched is self.correction_window.correction_edit:
+            if etype == QEvent.MouseButtonRelease:
+                self.signals.edit_field_clicked.emit(
+                    "correction", self.correction_window.correction_edit.cursorPosition()
+                )
+        elif watched is self.spelling_window:
+            # Les labels (titre, instructions) n'acceptent pas les clics et
+            # Qt les propage ici : le press sur la fenêtre les attrape.
+            if etype == QEvent.MouseButtonPress:
+                self.signals.edit_field_clicked.emit("fenetre_epellation", -1)
+        elif watched is self.correction_window:
+            if etype == QEvent.MouseButtonPress:
+                self.signals.edit_field_clicked.emit("fenetre_correction", -1)
+        return False
 
     def _apply_spelling_text_set_slot(self, text: str, cursor: int) -> None:
         self.spelling_window.set_text(text, None if cursor < 0 else cursor)
