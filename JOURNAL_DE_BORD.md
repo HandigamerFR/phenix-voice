@@ -476,3 +476,59 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 
 ### 3. Note de positionnement
 - Le journal est resté en l'état : cette entrée est placée **en toute fin de fichier** (après Session 10, physiquement dernière), conformément à la consigne « à la fin du fichier ».
+
+---
+
+## Session 13 - 15 Novembre 2026 (après-midi) : Diagnostic forensique des 2 échecs du test, fixes « fragment » + « curseur partagé », remontée de l'étape 5
+
+### 1. Diagnostic forensique — session `session_20261115_114624` (11:46–12:13)
+Deux échecs répertoriés par l'utilisateur, diagnostic mené sur `logs/injection_trace.jsonl` + `logs/dictation_debug.jsonl` (croisement chronologique par `clock`/`ts` ; scripts `$TEMP/opencode/diag_15*.py`).
+
+**Échec A — formes orales ajoutées mais jamais appliquées :**
+- `spoken_form_added ok:True ×2` (11:49:59 / 11:50:04) : `heard` = **la phrase entière** « Je teste une fois de plus mon application Bergune. » / `written` = la même phrase **sans le dernier mot** (l'utilisateur avait supprimé le mot).
+- La phrase n'a **jamais été rejouée** à l'identique ensuite (vérifié dans tous les logs) ; tentative « Berghine, » à 12:02:59 **détournée en « Au repos »** (faux positif DTW, conf 0.43 acceptée) ; « Virgule, » → « virgule ».
+- **Cause = granularité** : la clé était la phrase entière → déclenchement impossible en pratique (l'utilisateur attend le déclenchement sur le FRAGMENT).
+
+**Échec B — clics/curseur ignorés :**
+- Chronologie : 11:59:34 entrée épellation (curseur en fin du pré-rempli), 11:59:42 clics Correction **puis** Épellation, 11:59:46 insertion du « d » dicté **en fin** (« …Davidine » → « Davidined »), 12:00:07-09 **4 clics** sur Épellation → 12:00:24 « Davidinedd » encore en fin.
+- **Repro QTest hors écran** (`$TEMP/opencode/repro_click.py`) : le clic dans `spell_edit` **est** bien suivi (curseur tracké), mais le clic dans `correction_edit` **pendant que l'épellation est ouverte** était **ignoré** (`active_insert_position()` ne lit que le champ épellation).
+- **Géométrie** : champ `spell_edit` = bande de **30 px sur 192 px** (titre 52 px, instructions 52 px) ; fenêtre Épellation posée **juste sous** la fenêtre Correction (gap 13 px) → clics probables ratés sur le titre/labels. Limite du diagnostic : `target_window` dans les logs = fenêtre **active** au moment du clic (`profile/snapshot.py`), jamais le widget visé.
+- Anomalies constatées au passage : espaces surnuméraires **confirmés corrigés** par l'utilisateur ; `replace_last` positionné correctement dans les traces.
+
+### 2. Fixes implémentés (2 sous-agents parallèles, fichiers découplés)
+**Fix A — forme orale = fragment par diff** (`postprocess/symbols.py`, `main.py`, `tests/test_symbols.py`) :
+- `split_spoken_fragment(heard, written)` : alignement jeton à jeton (préfixe puis suffixe communs, comparaison normalisée via `command_keys` par jeton) → ne garde que la partie qui change : « … application Bergune. » / « … application Berghine » → (`Bergune.`, `Berghine`).
+- `SpokenFormStore.add` : candidats ordonnés **[fragment, phrase entière]** (repli si fragment non exploitable, ex. suppression pure du mot = cas du 15/11), gardes inchangées, nouvel attribut `last_recorded`.
+- `add_spoken_form_from_correction` : message HUD + log `spoken_form_added` enrichis de `form_heard`/`form_written` (le fragment **réellement enseigné** est affiché).
+- +5 tests → `test_symbols.py` = **17 passed**.
+
+**Fix B — curseur partagé + champ agrandi + log des clics** (`ui/hud.py`, `main.py`, `tests/test_spelling_cursor.py`) :
+- `_shared_insert_pos` : posé par **tout** `cursorPositionChanged` des deux champs (clic OU réécriture programmatique) → `active_insert_position()` le retourne en priorité = **le dernier champ touché fait foi** (les deux champs sont des miroirs du même texte en attente) ; le clic dans la fenêtre Correction n'est plus ignoré.
+- Nouveau `eventFilter` du HUD installé sur `spell_edit`, `correction_edit` et les 2 fenêtres → signal `edit_field_clicked(field, cursor)` → log `edit_field_clicked` (`epellation`/`correction`/`fenetre_epellation`/`fenetre_correction`) = diagnostic de clic à distance pour la prochaine session.
+- `SpellingWindow._build_ui` : `spell_edit` remonté en **indice 0** du layout + `setMinimumHeight(60)` (30 → 60 px, décision « champ agrandi ») ; champ Correction intact.
+- +5 tests → `test_spelling_cursor.py` = **19 passed**.
+
+### 3. Décisions utilisateur (questions 15/11)
+1. **Formes orales = « un MOT isolé »** (option 1 validée) + grande idée exprimée : pouvoir **sélectionner des parties de souffle (ou des mots de deux souffles différents)** pour corriger exactement ce qu'on veut → exige un système de **reconnaissance d'un texte même s'il n'a pas été dicté** (hors fragments) → **chantier à part, indexé avec la citation UIA** (ne change pas le travail immédiat).
+2. **Curseur = « les deux champs + champ agrandi »** (option validée) — implémenté intégralement.
+3. **« Corriger ça » Dragon-like** : si une **sélection existe dans le document** (même sans rapport avec le dernier souffle) → « ça » = la sélection ; sinon « ça » = le dernier souffle. **« Corriger \<texte\> »** (nommer un texte n'importe où + **gestion des occurrences** si plusieurs) = nécessite la reconnaissance de texte hors limites → **UIA TextPattern**.
+4. **Priorité** : « Corriger \<texte\> » placé **APRÈS l'entraînement** (l'utilisateur a demandé la remontée de l'étape 5 en raison de la fatigue → reconnaissance dégradée).
+
+### 4. Nouvel ordre de roadmap (validé)
+1. ~~Fixes des 2 échecs du 15/11~~ → **FAIT (cette session)**.
+2. **Étape 5 — entraînement du modèle (REMONTÉE en tête des tâches restantes)** : validation ROCm Windows preview → alignement forcé MFA → corpus de textes naturels dictés → LoRA Whisper FR.
+3. **Étape 2 (reste)** : enregistrement studio (26 `nato_*` + 12 `corpus_*`) + navigation vocale en mode épellation — *les sessions d'enregistrement peuvent être regroupées avec celles du corpus d'entraînement*.
+4. **« Corriger ça » (sélection sinon dernier souffle) + « Corriger \<texte\> » (citation UIA, occurrences)** — après l'entraînement, conformément au choix 15/11.
+5. Étapes 3 → 4.
+
+### 5. Validations
+- **Suite complète : `141 passed, 3 deselected`, exit 0** (baseline 131 → +10 tests des 2 fixes).
+- **Repro clic après fix** : champ `spell_edit` à `y=8, h=60` ; clic dans le champ Correction avec épellation ouverte → position active = **43** (au lieu de 6 avant) ; insertion au bon endroit.
+- **Smoke `smoke_fix5.py` offscreen : SMOKE 5 CORRECTIFS OK** (exit 0).
+- Aucune régression des 5 correctifs du matin (`79149e1`).
+- **Commits** : code+tests = **`cc2c4e5`** ; docs (ce journal + `PROMPT_REPRISE.md` §4/§4bis roadmap réordonnée) = commit suivant ; push des deux en fin de session.
+
+### 6. Anomalies ouvertes / restes signalés
+- **DTW faux positif** : « Berghine, » → « Au repos » (conf 0.43) — à surveiller (le filet DTW reste prioritaire par design, décision 14/11).
+- **Reste non traité du matin** : STT rendu **vide** + match DTW toujours ignoré (`return empty` avant le bloc DTW) — **décision utilisateur en attente**.
+- Erreurs STT du 15/11 à resouler par l'étape 5 : « Bergune », « Tasha à fer », « ma diction… », latence médiane 498 ms / p90 673.
