@@ -532,3 +532,15 @@ Deux échecs répertoriés par l'utilisateur, diagnostic mené sur `logs/injecti
 - **DTW faux positif** : « Berghine, » → « Au repos » (conf 0.43) — à surveiller (le filet DTW reste prioritaire par design, décision 14/11).
 - **Reste non traité du matin** : STT rendu **vide** + match DTW toujours ignoré (`return empty` avant le bloc DTW) — **décision utilisateur en attente**.
 - Erreurs STT du 15/11 à resouler par l'étape 5 : « Bergune », « Tasha à fer », « ma diction… », latence médiane 498 ms / p90 673.
+
+### 7. Validation ROCm Windows sur la RX 5700 XT (étape 5, premier bloqueur) — **SUCCÈS**
+- **Installation isolée** (le `.venv` DirectML d'inférence **n'a pas été touché**) : venv uv séparé `%TEMP%\opencode\venv-rocm` (Python 3.11.9) + `uv pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ --index-strategy unsafe-best-match "torch[device-gfx1010]==2.14.0+rocm10.1.0"` → `torch 2.14.0+rocm10.1.0`, `rocm-sdk-core/device-gfx1010/libraries 10.1.0` (~1,5 Go). Le pin `+rocm10.1.0` force le bon wheel (l'index AMD héberge aussi torchvision/torchaudio si besoin).
+- **Support officiel** : la RX 5700 XT (RDNA1, `gfx1010`) est dans les wheels **multi-arch AMD** depuis ROCm 7.13 → **ROCm 10.1.0 stable (10/2026) la couvre nativement** ; aucun `HSA_OVERRIDE_GFX_VERSION` nécessaire ; pilote Adrenalin `32.0.21045.16010` compatible.
+- **Résultats du banc (`$TEMP/opencode/test_rocm.py`, exit 0)** :
+  - `torch.cuda.is_available() = True`, **HIP 7.16.26385**, GPU = AMD Radeon RX 5700 XT, arch `gfx1010:xnack-`, **VRAM 8.6 Go**, **bf16 = supporté** ;
+  - matmul **fp16** 4096² : 35,81 ms (**3,84 TFLOPS**) ;
+  - **SDPA + backward** : OK (grads alimentés) ;
+  - **AdamW × 20** (proxy pas LoRA) : 12,3 ms/step, pic mémoire **0,33 Go** ;
+  - **bloc Transformer type Whisper** (d_model 1024, fp16, 1500 jetons = fenêtre 30 s) + backward : **429 ms, pic 1,05 Go**.
+- **Verdict** : la carte est **apte à l'entraînement LoRA** prévu au 13/11 (gel encoder bas, couches hautes + decoder) — le LoRA sur Whisper Large-v3-Turbo (809 M) tient dans 8,6 Go ; le full fine-tuning des ~3 B reste hors budget (confirmé). L'utilisateur notait « carte graphique moyenne » : le plan validé (LoRA + augmentation légères) est précisément dimensionné pour ça.
+- **Reprise exacte** : `venv-rocm\Scripts\python.exe $TEMP/opencode/test_rocm.py` ; prochain jalon = banc LoRA réel (`transformers` + `peft` + `accelerate` dans `venv-rocm`) puis corpus MFA.
