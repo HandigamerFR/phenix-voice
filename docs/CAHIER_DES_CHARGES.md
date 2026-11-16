@@ -59,6 +59,8 @@
   - Dictionnaire d'équivalences forcées : si le moteur acoustique transcrit systématiquement le mot ou phonème $A$ lorsque l'utilisateur veut dire $B$, l'utilisateur peut créer en 1 clic une règle prioritaire $A \rightarrow B$ (globale, en début/fin de phrase, ou entourée de certains mots).
 - **Amélioration continue par consolidation locale (*Fine-Tuning LoRA*)** :
   - Entraînement périodique d'une couche d'adaptation légère (*LoRA*) sur les échantillons validés du Studio d'étalonnage et des corrections quotidiennes (Action A).
+  - **Objectif chiffré (validé 16/11, à tenir dans le manuel)** : après une **lecture/corpus d'environ 20 minutes**, le système est **adapté au mieux possible** à la voix de l'utilisateur en **1 heure maximum de calcul en tâche de fond** (l'ordinateur peut être laissé en marche) — soit ~15 min de dictée + MFA + quelques minutes d'entraînement LoRA (débit mesuré ~13 000 segments/heure, config bf16 + batch 8, JOURNAL session 13 §7bis) avec de la marge.
+  - **Phase 2 — adaptation au fil de l'eau** (après validation de l'entraînement initial) : consommation continue des échantillons déjà collectés (`user_data/corrections_learned/`, Action A) pour réentraîner/actualiser l'adaptateur LoRA périodiquement (ex. fin de session ou après N nouvelles corrections), avec les snapshots existants comme garde-fous anti-dérive. La **collecte** est déjà en place dans le code ; c'est la **boucle d'entraînement** qui reste à écrire.
 - **Gestion de profils d'état (Fatigue vocale)** :
   - Possibilité de gérer plusieurs sous-profils acoustiques (ex. *Voix reposée* vs *Voix fatiguée*) pour s'adapter aux variations de diction en cours de journée (utile pour le créateur ou pour d'autres utilisateurs ayant une forte fatigabilité).
 
