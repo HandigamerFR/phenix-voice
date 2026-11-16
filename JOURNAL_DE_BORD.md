@@ -553,9 +553,15 @@ Deux échecs répertoriés par l'utilisateur, diagnostic mené sur `logs/injecti
 - **Résultats (exit 0, 5 pas chronométrés après 1 pas de chauffe)** :
   - modèle chargé en 2-4 s (cache local) ; LoRA `q_proj/v_proj` r=16 α=32 : **3 276 800 params = 0,40 %** entraînables, le reste gelé ;
   - **fp32 + checkpointing : 9,19 s/step, pic 11,39 Go** ; sans checkpointing : 9,14 s / 11,39 Go (le checkpointing ne change rien ici — mémoire dominée par les poids/allocateur ROCm, pas les activations) ;
-  - **poids gelés en bf16 (`--bf16-weights`) : 6,46 s/step (−30 %), pic 10,12 Go / réservé 10,54 Go** — configuration de référence ;
-  - perte synthétique décroissante (12,6 → 11,2 sur 5 pas), normes de grad ~10-12 (clip 1.0 actif) ;
-  - **projection : ~558 pas/heure** → un corpus de 2 000 segments = ~3,6 h par époque.
-- **Limite connue** : l'allocateur ROCm déclare 10-11 Go sur 8,6 Go de VRAM physiques (débordement en mémoire partagée WDDM — la pilote affiche 8,6 Go occupés / 0 libres, la doc AMD avertit que les process peuvent utiliser la mémoire système au-delà de la VRAM). Aucun OOM ni ralentissement observé, mais **la config bf16 est retenue pour l'entraînement réel** ; à surveiller sur sessions longues.
-- **Reprise exacte** : `$env:PYTHONIOENCODING='utf-8'; & "$env:TEMP\opencode\venv-rocm\Scripts\python.exe" tools\lora_bench.py --steps 5 --bf16-weights` ; options : `--steps N`, `--no-checkpointing`, `--bf16-weights`.
-- **Prochain jalon étape 5** : corpus de textes naturels dictés → alignement MFA local → script d'entraînement LoRA réel (réutiliser le shim + la config bf16 du banc) → fusion + ré-export ONNX.
+  - **poids gelés en bf16 (`--bf16-weights`) : 6,46 s/step (−30 %), pic 10,12 Go / réservé 10,54 Go** — configuration de référence fenêtre 30 s ;
+  - perte synthétique décroissante (12,6 → 11,2 sur 5 pas), normes de grad ~10-12 (clip 1.0 actif).
+- **Patch variable-length (`--frames < 3000`) — levier décisif (mesuré 16/11)** : Whisper impose 3000 trames (check strict `modeling_whisper.py` l.609-613) et calcule les positions pour 1500 jetons (l.619) ; le banc assouplit les 2 points (conv1 s=1, conv2 s=2 → jetons = trames/2, trames paires). **Les utterances réelles font 3-10 s, pas 30 s** — sans ce patch tout segment serait paddé à 3000 et coûterait le prix d'une fenêtre pleine :
+  - **500 trames (5 s) batch 1 : 0,44 s/step, pic 2,33 Go** (vs 6,46 s / 10,12 Go en 30 s) → **×15** ;
+  - **500 trames batch 8 : 2,21 s/step, pic 6,31 Go, ~13 019 segments/heure** — **meilleure config mesurée** ;
+  - 500 trames batch 12 : 4,66 s/step (9 265/h) ; batch 16 : 7,89 s (7 299/h) — au-delà de 8 la parallélisation recule ;
+  - 1000 trames (10 s) batch 4 : 2,51 s/step (5 747/h) ; batch 8 : 10,59 s (2 720/h, OOM en fin de run) ;
+  - **batch > 1 en 30 s padde = OOM** (batch 2 : 14,04 Go alloués, `torch.OutOfMemoryError`) — la WDDM autorise un débordement en mémoire partagée mais impose une limite dure (~13-14 Go déclarés) ;
+  - **projection corrigée : 2 000 segments de ~5 s ≈ 9 min/époque** (batch 8, 13 019 seg/h) au lieu des 3,6 h en fenêtre 30 s padée — un entraînement de quelques heures couvre plusieurs époques sur corpus réel.
+- **Limite connue** : l'allocateur ROCm déclare 10-11 Go sur 8,6 Go de VRAM physiques en fenêtre 30 s (débordement mémoire partagée WDDM — la pilote affiche 8,6 Go occupés / 0 libres, la doc AMD avertit que les process peuvent utiliser la mémoire système au-delà de la VRAM). Aucun OOM ni ralentissement observé en 30 s ; en segments 5-10 s on reste à 2,3-6,3 Go, largement dans les clous. **Config retenue pour l'entraînement réel : bf16 + frames ~500-1000 + batch 8**.
+- **Reprise exacte** : `$env:PYTHONIOENCODING='utf-8'; & "$env:TEMP\opencode\venv-rocm\Scripts\python.exe" tools\lora_bench.py --steps 4 --bf16-weights --frames 500 --batch 8` ; options : `--steps N`, `--frames <pair>`, `--batch N`, `--bf16-weights`, `--no-checkpointing`.
+- **Prochain jalon étape 5** : corpus de textes naturels dictés → alignement MFA local → script d'entraînement LoRA réel (réutiliser le shim + patch variable-length + config bf16/batch 8 du banc) → fusion + ré-export ONNX.
