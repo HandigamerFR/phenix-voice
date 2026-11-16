@@ -7,7 +7,14 @@
 
 from __future__ import annotations
 
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from types import SimpleNamespace
+
+import pytest
+from PySide6.QtWidgets import QApplication
 
 from phenix_voice.ui.calibration_studio import (
     CORPUS_PROMPTS,
@@ -18,6 +25,14 @@ from phenix_voice.ui.calibration_studio import (
     NATO_VOCABULARY,
     CalibrationStudioWindow,
 )
+
+
+@pytest.fixture(scope="module")
+def qapp() -> QApplication:
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
 
 
 def test_nato_prompts_cover_the_26_word_alphabet() -> None:
@@ -76,3 +91,41 @@ def test_prev_button_goes_back_one_prompt() -> None:
     fake.current_index = 1
     CalibrationStudioWindow._prev_current(fake)
     assert loaded == [4, 0]
+
+
+def test_replay_button_plays_the_recording_before_validation(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """🔊 « Réécouter » : rejoue l'enregistrement avant de trancher valider/fourcher."""
+    import numpy as np
+
+    from phenix_voice.ui import calibration_studio as cs
+
+    played: list[tuple] = []
+    stops: list[int] = []
+    monkeypatch.setattr(cs.sd, "play", lambda audio, sr: played.append((audio, sr)))
+    monkeypatch.setattr(cs.sd, "stop", lambda: stops.append(1))
+
+    win = cs.CalibrationStudioWindow(output_dir=tmp_path / "calib")
+    try:
+        # Présent, mais inactif tant qu'aucun enregistrement n'a été analysé
+        assert hasattr(win, "play_btn")
+        assert not win.play_btn.isEnabled()
+        assert win._current_audio is None
+
+        # Enregistrement prêt -> bouton activé (via la zone de validation)
+        audio = np.zeros(1600, dtype=np.float32)
+        win._current_audio = audio
+        win.play_btn.setEnabled(True)
+
+        # Lecture : rejoue exactement l'audio en attente, au bon taux
+        win._play_current_audio()
+        assert played, "sd.play jamais appelé"
+        assert played[-1][0] is audio
+        assert played[-1][1] == win.sample_rate
+
+        # Valider -> la lecture en cours est coupée avant sauvegarde
+        win._stop_playback()
+        assert stops, "sd.stop jamais appelé"
+    finally:
+        win.close()

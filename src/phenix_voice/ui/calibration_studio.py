@@ -366,6 +366,19 @@ class CalibrationStudioWindow(QWidget):
             QPushButton#retryBtn:hover {
                 background-color: #b45309;
             }
+            QPushButton#playBtn {
+                background-color: #475569;
+                border-color: #64748b;
+                font-size: 15px;
+            }
+            QPushButton#playBtn:hover {
+                background-color: #64748b;
+            }
+            QPushButton#playBtn:disabled {
+                background-color: #1e293b;
+                color: #64748b;
+                border-color: #334155;
+            }
             QComboBox {
                 background-color: #1e293b;
                 border: 1px solid #475569;
@@ -500,6 +513,13 @@ class CalibrationStudioWindow(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(14)
 
+        self.play_btn = QPushButton("🔊 Réécouter mon enregistrement")
+        self.play_btn.setObjectName("playBtn")
+        self.play_btn.setMinimumHeight(46)
+        self.play_btn.setEnabled(False)
+        self.play_btn.clicked.connect(self._play_current_audio)
+        btn_row.addWidget(self.play_btn)
+
         self.valid_btn = QPushButton(
             "✅ Oui, prononciation habituelle (Valider & Apprendre)"
         )
@@ -552,6 +572,8 @@ class CalibrationStudioWindow(QWidget):
         self._current_audio = None
         self._current_heard_text = ""
         self._current_alts = []
+        self._stop_playback()
+        self.play_btn.setEnabled(False)
 
     def _skip_current(self) -> None:
         if self.current_index + 1 < len(self.prompts):
@@ -610,6 +632,8 @@ class CalibrationStudioWindow(QWidget):
             self._recorded_chunks.clear()
             self._live_peak = 0.0
             self._is_recording = True
+            self._stop_playback()
+            self.play_btn.setEnabled(False)
             self.validation_frame.setVisible(False)
             self._stream = sd.InputStream(
                 samplerate=self.sample_rate,
@@ -656,9 +680,25 @@ class CalibrationStudioWindow(QWidget):
             self.record_btn.setEnabled(False)
             self.record_btn.setText("Enregistrement analysé — Validez ci-dessous :")
             self.record_btn.setStyleSheet("background-color: #334155;")
+            self.play_btn.setEnabled(True)
             self.validation_frame.setVisible(True)
 
+    def _play_current_audio(self) -> None:
+        """Réécoute l'enregistrement en cours pour trancher : valider ou rejeter."""
+        if self._current_audio is None or self._current_audio.size == 0:
+            return
+        sd.stop()
+        sd.play(self._current_audio, self.sample_rate)
+
+    def _stop_playback(self) -> None:
+        try:
+            sd.stop()
+        except Exception:
+            pass
+
     def _discard_and_retry(self) -> None:
+        self._stop_playback()
+        self.play_btn.setEnabled(False)
         self._current_audio = None
         self.vu_bar.setValue(0)
         self.peak_info_label.setText("Prêt à ré-enregistrer")
@@ -675,6 +715,7 @@ class CalibrationStudioWindow(QWidget):
     def _validate_and_next(self) -> None:
         if self._current_audio is None:
             return
+        self._stop_playback()
         p = self.prompts[self.current_index]
         expected_text = self.target_edit.text().strip() or p.expected_text
         raw_audio = self._current_audio
