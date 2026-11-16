@@ -129,3 +129,60 @@ def test_replay_button_plays_the_recording_before_validation(
         assert stops, "sd.stop jamais appelé"
     finally:
         win.close()
+
+
+def test_validation_auto_starts_the_next_recording_without_click(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """✅ Valider -> l'enregistrement suivant démarre SEUL (accessibilité 16/11)."""
+    import numpy as np
+    from PySide6.QtTest import QTest
+
+    from phenix_voice.ui import calibration_studio as cs
+
+    class FakeStream:
+        def __init__(self, **kwargs) -> None:
+            self.started = False
+
+        def start(self) -> None:
+            self.started = True
+
+        def stop(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    streams: list[FakeStream] = []
+
+    def make_stream(**kwargs):
+        s = FakeStream(**kwargs)
+        streams.append(s)
+        return s
+
+    monkeypatch.setattr(cs.sd, "InputStream", make_stream)
+    monkeypatch.setattr(cs.sd, "play", lambda *a, **k: None)
+    monkeypatch.setattr(cs.sd, "stop", lambda *a, **k: None)
+
+    win = cs.CalibrationStudioWindow(output_dir=tmp_path / "calib")
+    try:
+        assert not win._is_recording
+        # Simule un enregistrement analysé, prêt à valider
+        win._current_audio = np.zeros(1600, dtype=np.float32)
+        win._current_heard_text = ""
+        first_index = win.current_index
+
+        win._validate_and_next()
+
+        # On est passé au prompt suivant
+        assert win.current_index == first_index + 1
+        # L'enregistrement suivant démarre SEUL (délai 500 ms), sans clic
+        QTest.qWait(900)
+        assert win._is_recording, "l'enregistrement automatique n'a pas demarre"
+        assert streams and streams[-1].started
+        # Le bouton reflète l'état « en train d'enregistrer »
+        assert "ARRÊTER" in win.record_btn.text()
+    finally:
+        if win._is_recording:
+            win._toggle_recording()
+        win.close()

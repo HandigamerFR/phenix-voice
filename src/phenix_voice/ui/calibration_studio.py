@@ -703,6 +703,8 @@ class CalibrationStudioWindow(QWidget):
         self.vu_bar.setValue(0)
         self.peak_info_label.setText("Prêt à ré-enregistrer")
         self._load_prompt(self.current_index)
+        # Reprise automatique : on ré-enregistre le MÊME prompt sans clic.
+        QTimer.singleShot(500, self._auto_start_recording)
 
     def _save_wav(self, path: Path, audio_f32: np.ndarray) -> None:
         pcm16 = np.clip(audio_f32 * 32767.0, -32768, 32767).astype(np.int16)
@@ -766,8 +768,16 @@ class CalibrationStudioWindow(QWidget):
 
         if self.current_index + 1 < len(self.prompts):
             self._load_prompt(self.current_index + 1)
+            # Enchaînement AUTOMATIQUE sur l'enregistrement suivant : pas de
+            # clic « Démarrer » supplémentaire (contrainte d'accessibilité 16/11).
+            QTimer.singleShot(500, self._auto_start_recording)
         else:
             self.close()
+
+    def _auto_start_recording(self) -> None:
+        """Démarre l'enregistrement sans clic (après validation ou reprise)."""
+        if not self._is_recording and self._current_audio is None:
+            self._toggle_recording()
 
 
 def main() -> None:
