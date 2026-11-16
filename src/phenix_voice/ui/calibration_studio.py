@@ -197,8 +197,36 @@ CORPUS_PROMPTS: list[CalibrationPrompt] = [
     for i, text in enumerate(CORPUS_TEXTS, start=1)
 ]
 
+# Corpus d'étalonnage COMPLET (384 phrases, étape 5) : une phrase par ligne de
+# `corpus/etalonnage.txt`, ids `utt0001`..`utt0384` alignés sur
+# `corpus/etalonnage_mfa.txt` (jumelage direct avec les WAV pour MFA).
+# Chargé depuis le dépôt ; si le fichier est absent (installation publique),
+# seuls les 50 prompts intégrés restent disponibles.
+def _load_full_corpus_prompts() -> list[CalibrationPrompt]:
+    corpus_file = Path(__file__).resolve().parents[3] / "corpus" / "etalonnage.txt"
+    if not corpus_file.is_file():
+        return []
+    texts = [
+        line.strip()
+        for line in corpus_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    return [
+        CalibrationPrompt(
+            id=f"utt{i:04d}",
+            category="15. Corpus étalonnage complet 384 phrases (étape 5)",
+            expected_text=text,
+            instruction="Dictez cette phrase naturellement, comme en dictée normale.",
+        )
+        for i, text in enumerate(texts, start=1)
+    ]
+
+
+FULL_CORPUS_PROMPTS: list[CalibrationPrompt] = _load_full_corpus_prompts()
+
 ENRICHED_PROMPTS.extend(NATO_PROMPTS)
 ENRICHED_PROMPTS.extend(CORPUS_PROMPTS)
+ENRICHED_PROMPTS.extend(FULL_CORPUS_PROMPTS)
 
 
 class CalibrationStudioWindow(QWidget):

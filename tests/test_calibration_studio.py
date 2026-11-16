@@ -13,6 +13,7 @@ from phenix_voice.ui.calibration_studio import (
     CORPUS_PROMPTS,
     CORPUS_TEXTS,
     ENRICHED_PROMPTS,
+    FULL_CORPUS_PROMPTS,
     NATO_PROMPTS,
     NATO_VOCABULARY,
     CalibrationStudioWindow,
@@ -38,11 +39,15 @@ def test_corpus_prompts_cover_the_12_natural_texts() -> None:
 
 
 def test_enriched_prompts_are_unique_and_complete() -> None:
-    # 12 commandes/ponctuation + 26 OTAN + 12 corpus = 50
-    assert len(ENRICHED_PROMPTS) == 50
+    # 12 commandes/ponctuation + 26 OTAN + 12 corpus + 384 phrases d'étalonnage
+    assert len(ENRICHED_PROMPTS) == 50 + len(FULL_CORPUS_PROMPTS)
+    assert len(FULL_CORPUS_PROMPTS) == 384
     ids = [p.id for p in ENRICHED_PROMPTS]
     assert len(ids) == len(set(ids)), "ids de prompts en double"
     assert set(ids) >= {p.id for p in NATO_PROMPTS} | {p.id for p in CORPUS_PROMPTS}
+    assert [p.id for p in FULL_CORPUS_PROMPTS] == [
+        f"utt{i:04d}" for i in range(1, 385)
+    ]
 
 
 def test_first_missing_index_starts_at_first_unrecorded_prompt() -> None:
