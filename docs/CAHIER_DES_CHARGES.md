@@ -55,6 +55,10 @@
   - Sessions d'entraînement proposant de prononcer plusieurs fois une liste de phonèmes, syllabes, mots fréquents ou phrases types.
   - À chaque prononciation, demande de confirmation : *« Avez-vous fait une erreur / bafouillé pendant cette prononciation ? (Oui / Non) »*.
   - Agrégation et modélisation des prononciations validées pour construire l'empreinte vocale de l'utilisateur.
+- **Studio réutilisable depuis l'application principale (exigence utilisateur 16/11)** :
+  - **Relance à volonté** : depuis l'application, pouvoir rouvrir le Studio pour **refaire ou compléter l'intégralité du corpus** (y compris les 384 phrases d'étalonnage) quand le souhaite — pas seulement au premier démarrage.
+  - **Correction → enregistrement immédiat** : depuis l'interface de correction (« Corriger ça »), après avoir saisi/adapté le texte corrigé, pouvoir **enregistrer tout de suite l'audio de la reformulation** (le Studio prend la correction comme texte attendu et capture la voix) pour alimenter l'apprentissage avec le bon couple (audio → texte corrigé).
+  - **Écoute du segment avant correction** : l'interface de correction doit permettre d'**écouter l'audio du segment concerné** (déjà conservé en mémoire : `ShadowSegment.audio_pcm`, 25 derniers souffles) pour juger si la correction vaut le coup ou si la prononciation est trop dégradée (segment à jeter).
 - **Règles déterministes « Si je dis A, écris B »** :
   - Dictionnaire d'équivalences forcées : si le moteur acoustique transcrit systématiquement le mot ou phonème $A$ lorsque l'utilisateur veut dire $B$, l'utilisateur peut créer en 1 clic une règle prioritaire $A \rightarrow B$ (globale, en début/fin de phrase, ou entourée de certains mots).
 - **Amélioration continue par consolidation locale (*Fine-Tuning LoRA*)** :
