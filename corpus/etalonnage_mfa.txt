@@ -1,0 +1,384 @@
+utt0001 Le soleil se lève derrière les collines.
+utt0002 J'ouvre la fenêtre pour laisser entrer l'air frais.
+utt0003 Une tasse de café fume sur la table.
+utt0004 Je cherche mes lunettes, elles sont sur le canapé.
+utt0005 La radio annonce une belle journée ensoleillée.
+utt0006 Mon frère prend le bus vers huit heures.
+utt0007 La porte du garage grince toujours le matin.
+utt0008 Nous achetons du pain chaud chez le boulanger.
+utt0009 Les voisins rangent leur voiture devant la maison.
+utt0010 Je remplis la bouilloire pour le thé.
+utt0011 Le chat dort au milieu du couloir.
+utt0012 Ma sœur écrit un message à notre cousin.
+utt0013 Le jardinier taille les roses derrière le haut mur.
+utt0014 Un oiseau chante sur le fil électrique.
+utt0015 J'oublie parfois mon parapluie dans l'entrée.
+utt0016 Les enfants déboulent dans la cour de l'école.
+utt0017 Le réveil sonne deux fois avant de s'arrêter.
+utt0018 Je prépare un sandwich au fromage et aux tomates.
+utt0019 La lampe du bureau clignote doucement.
+utt0020 La recette demande du beurre, des œufs et un peu de sel.
+utt0021 Fais chauffer l'huile dans la grande poêle.
+utt0022 Il épluche les carottes avec un couteau bien aiguisé.
+utt0023 La soupe mijote depuis une demi-heure.
+utt0024 J'ai coupé le gâteau en huit parts égales.
+utt0025 Le fromage de chèvre est très fort au goût.
+utt0026 Nous gardons le pain rassis pour faire des miettes.
+utt0027 Une odeur de viande grillée remplit la cuisine.
+utt0028 Passe-moi le saladier et la fourchette en bois.
+utt0029 Le vinaigre rend la sauce un peu trop acide.
+utt0030 Tu peux écraser l'ail avec la petite presse.
+utt0031 La tarte aux pommes refroidit sur la grille.
+utt0032 Nous mettons du poivre et du sel sur les tomates.
+utt0033 Le boucher découpe le jambon derrière la vitrine.
+utt0034 Le renard brun saute près du vieux pont.
+utt0035 J'ai écrit une lettre à ma sœur ce matin.
+utt0036 Les jeunes gens chantent une chanson joyeuse.
+utt0037 Mon frère achète des cerises très sucrées.
+utt0038 Pourquoi les ouvriers réparent-ils la toiture ?
+utt0039 Une île calme au milieu de la rivière.
+utt0040 Le bûcheron débite le bois sous la pluie.
+utt0041 Ta sœur a mangé des champignons au jardin.
+utt0042 Zoé a pris le bus jaune pour aller au cirque.
+utt0043 Vingt-cinq soldats chargent leurs sacs près du port.
+utt0044 Le docteur examine gentiment le petit oiseau.
+utt0045 Écoutez la musique douce du violon ce soir.
+utt0046 Le vent d'automne tombe doucement sur les champs.
+utt0047 Les feuilles mortes flottent dans la rivière.
+utt0048 Un brouillard épais couvre la vallée au petit matin.
+utt0049 Les grenouilles coassent près de l'étang.
+utt0050 Une abeille butine les fleurs du jardin.
+utt0051 Les étoiles brillent clairement dans la nuit froide.
+utt0052 Le torrent gronde entre les gros rochers.
+utt0053 Les branches du saule tremblent au vent.
+utt0054 Un cerf boit au bord du lac.
+utt0055 La neige couvre les toits et les sapins.
+utt0056 Les huîtres sont fraîches sur le marché.
+utt0057 Le chêne ancien abrite une nichée d'oiseaux.
+utt0058 Une libellule vole au-dessus de l'étang.
+utt0059 Les montagnes bleues s'effacent derrière la brume.
+utt0060 Le paysage change avec chaque saison.
+utt0061 Le métro bondé traverse la ville sous la terre.
+utt0062 Je tourne à droite au prochain carrefour.
+utt0063 Les piétons attendent le feu vert au passage.
+utt0064 Le train arrive en retard à cause du brouillard.
+utt0065 Une ambulance traverse le centre-ville en klaxonnant.
+utt0066 Nous cherchons un parking près de la gare.
+utt0067 La bicyclette roule vite sur la piste cyclable.
+utt0068 Le taxi s'arrête devant le grand hôtel.
+utt0069 J'ai perdu le ticket de mon wagon.
+utt0070 La route serpente entre les collines boisées.
+utt0071 Un camion chargé de sable roule lentement.
+utt0072 Le bus s'éloigne pendant que nous courons.
+utt0073 Le chauffeur répare le pneu à l'aire d'autoroute.
+utt0074 Nous attendons le car à l'arrêt sous la pluie.
+utt0075 Le pont de pierre enjambe la rivière rapide.
+utt0076 Les passagers descendent du train en silence.
+utt0077 Le médecin examine ma gorge avec une petite lampe.
+utt0078 Ma voix est un peu rauque depuis hier.
+utt0079 L'orthophoniste travaille avec moi deux fois par semaine.
+utt0080 Je fais des exercices de respiration chaque matin.
+utt0081 Mon dos me fait mal après avoir porté les courses.
+utt0082 L'infirmière prend ma tension avant l'examen.
+utt0083 Il tousse souvent quand l'air est trop sec.
+utt0084 J'avale un verre d'eau avec mes médicaments.
+utt0085 Le kinésithérapeute masse l'épaule droite.
+utt0086 Mon genou craque quand je monte l'escalier.
+utt0087 La fièvre est tombée pendant la nuit.
+utt0088 Je dois reprendre mes forces après l'opération.
+utt0089 Les yeux me piquent à cause du pollen.
+utt0090 Le dentiste vérifie mes dents et mes gencives.
+utt0091 Il se sent fatigué après cette longue journée.
+utt0092 Bois assez d'eau pour garder l'énergie.
+utt0093 Ma grand-mère habite dans un village du sud.
+utt0094 Nous fêtons l'anniversaire de mon cousin samedi.
+utt0095 Ton ami est très gentil avec tout le monde.
+utt0096 Je suis fier du travail accompli par l'équipe.
+utt0097 Il pleure souvent devant les films tristes.
+utt0098 La surprise de ta mère était adorable.
+utt0099 Nous discutons longuement autour de la grande table.
+utt0100 Mon voisin répare toujours mes outils.
+utt0101 Tu me manques depuis ton départ à l'étranger.
+utt0102 Le bébé sourit en voyant son doudou.
+utt0103 Elle chuchote des histoires à ses enfants.
+utt0104 Nous invitons les cousins pour le réveillon.
+utt0105 Je pense souvent à nos vieilles vacances.
+utt0106 Les voisins ont organisé une fête dans la rue.
+utt0107 Ton sourire rend tout plus simple.
+utt0108 J'écris un long rapport sur mon ordinateur.
+utt0109 La batterie du portable est presque vide.
+utt0110 Clique sur l'icône pour ouvrir le fichier.
+utt0111 Le fichier est trop lourd pour être envoyé.
+utt0112 Mon collègue corrige les fautes avant l'envoi.
+utt0113 Un écran bleu s'affiche soudain sur le bureau.
+utt0114 Sauvegarde tes documents sur le disque externe.
+utt0115 L'imprimante grince et refuse d'avancer.
+utt0116 J'attends la validation du client avant de partir.
+utt0117 Le message contient une pièce jointe énorme.
+utt0118 Nous organisons une réunion mardi matin.
+utt0119 Le projet avance malgré les problèmes techniques.
+utt0120 Il corrige le code pendant toute la nuit.
+utt0121 Cette application consomme trop de mémoire vive.
+utt0122 Le tableau affiche les résultats du mois.
+utt0123 Comment se porte ta mère depuis son opération ?
+utt0124 Est-ce que tu viens avec nous ce soir ?
+utt0125 Où ai-je mis mes clés de voiture ?
+utt0126 Comment se nomme ce village sur la carte ?
+utt0127 As-tu besoin de quelque chose avant de dormir ?
+utt0128 Quand part le prochain train pour Lyon ?
+utt0129 Qui veut goûter ce gâteau aux fruits ?
+utt0130 Combien de temps durera la réunion de demain ?
+utt0131 Peux-tu répéter cette phrase un peu plus lentement ?
+utt0132 À quelle heure ouvre la bibliothèque ?
+utt0133 Quelqu'un a-t-il vu mon parapluie jaune ?
+utt0134 Pourrais-tu m'aider à porter ces bagages ?
+utt0135 Est-il possible de changer la date du rendez-vous ?
+utt0136 Où se trouve la prochaine station-service ?
+utt0137 Sais-tu pourquoi le magasin est fermé aujourd'hui ?
+utt0138 Veux-tu du thé ou un verre d'eau ?
+utt0139 D'abord nous faisons les courses, ensuite nous rentrons.
+utt0140 Il est parti parce qu'il devait prendre le train.
+utt0141 C'est difficile, mais le résultat vaut vraiment le coup.
+utt0142 Bien que la pluie tombe, nous sortons nous promener.
+utt0143 Tandis que je prépare le dîner, tu peux t'asseoir.
+utt0144 Enfin, nous terminons par un café dans le jardin.
+utt0145 Tu peux choisir le bleu, le rouge ou le vert.
+utt0146 Il y a du pain, du fromage, des fruits et du jus.
+utt0147 Premièrement, vérifie le micro. Deuxièmement, lance l'enregistrement.
+utt0148 Non seulement il est ponctuel, mais il est aussi minutieux.
+utt0149 Par conséquent, nous devons avancer plus vite.
+utt0150 En revanche, la version précédente fonctionnait parfaitement.
+utt0151 Quoiqu'il soit tard, nous continuons la discussion.
+utt0152 Malgré le froid, les enfants jouent dehors.
+utt0153 Ainsi, chacun peut lire le texte à son rythme.
+utt0154 Au contraire, cette solution semble plus simple.
+utt0155 Nous sommes le treize novembre.
+utt0156 Il a acheté trois kilos de pommes et deux poires.
+utt0157 La réunion commence à neuf heures et demie.
+utt0158 Six ouvriers travaillent sur le chantier ce matin.
+utt0159 Le train part à quinze heures trente.
+utt0160 J'ai téléphoné quatre fois sans succès.
+utt0161 Le colis pèse vingt-deux kilos.
+utt0162 Nous habitons au numéro vingt et un de la rue des Lilas.
+utt0163 La facture s'élève à cent quatre-vingts euros.
+utt0164 Dix-neuf visiteurs sont entrés dans le musée.
+utt0165 Sept personnes attendent déjà à l'accueil.
+utt0166 Le thermomètre indique dix-huit degrés.
+utt0167 Elle est née le premier juin mille neuf cent quatre-vingt-douze.
+utt0168 Le huit du mois, nous partons en vacances.
+utt0169 Le café est prêt.
+utt0170 Ferme la fenêtre, s'il te plaît.
+utt0171 Je t'écoute.
+utt0172 Ouvre le tiroir du bas.
+utt0173 Il fait très chaud aujourd'hui.
+utt0174 Répète lentement, je t'en prie.
+utt0175 Le chien dort près du radiateur.
+utt0176 Nous y sommes presque.
+utt0177 Prends ton parapluie.
+utt0178 C'est exactement ça.
+utt0179 Laisse-moi finir cette phrase.
+utt0180 Tu as raison.
+utt0181 Il est déjà tard.
+utt0182 Mets la table pour le dîner.
+utt0183 J'ai besoin d'une pause.
+utt0184 Écoute bien la consigne.
+utt0185 Hier après-midi, nous avons visité le vieux château.
+utt0186 Pendant les vacances, la famille se réunit au bord de la mer.
+utt0187 Le boulanger sort du four une fournée de baguettes croustillantes.
+utt0188 Sur le marché, les marchands vendent des légumes frais et des fleurs.
+utt0189 L'orage a abattu deux arbres devant l'école cette nuit.
+utt0190 Le professeur explique la leçon avec beaucoup de patience.
+utt0191 Nous avons trouvé une vieille photo dans le grenier.
+utt0192 Le voisin a adopté deux chats et un chien.
+utt0193 Après le dîner, tout le monde s'installe devant la télévision.
+utt0194 La petite fille raconte un conte à sa poupée.
+utt0195 Un livreur dépose un colis devant la porte.
+utt0196 Nous avons marché longtemps avant de trouver un banc.
+utt0197 Le jardin est plein de rosiers et de tilleuls.
+utt0198 Le facteur distribue le courrier dans la rue tranquille.
+utt0199 Quand la cloche sonne, les élèves sortent en courant.
+utt0200 Mon oncle cuisine souvent des plats du sud.
+utt0201 L'instructeur donne des instructions très claires.
+utt0202 Le stratège construit une stratégie prudente.
+utt0203 Cette brasserie produit une bière très recherchée.
+utt0204 Les ustensiles sont rangés dans le tiroir du bas.
+utt0205 Un extraordinaire spectacle se déroule sur la place.
+utt0206 Le pharmacien prépare une ordonnance complète.
+utt0207 Nous avons observé un bref silence après l'annonce.
+utt0208 L'architecte dessine une façade sobre et élégante.
+utt0209 Le gymnase est vaste et lumineux.
+utt0210 La circulaire annonce des travaux sur la route.
+utt0211 Un fragment de verre brillait sur le trottoir.
+utt0212 Le prince prononce un discours très court.
+utt0213 Le solstice arrive avec les jours plus courts.
+utt0214 L'astronome observe une étoile filante.
+utt0215 Le bûcheron plante un pieu près du buisson.
+utt0216 Le docteur tient un dossier très tendu.
+utt0217 Le clocher gronde quand le vent se lève.
+utt0218 Le vieux forgeron forge un fer à cheval.
+utt0219 Les amis organisent un séjour au bord de la mer.
+utt0220 Le chat saute sur le canapé.
+utt0221 Le juge achète un chapeau gris.
+utt0222 Les vingt pommes du panier sont encore fraîches.
+utt0223 Cet été, nous irons près de la mer.
+utt0224 Le gros collier tombe sur le sol.
+utt0225 Tu es fou de courir dans la rue.
+utt0226 Papa mange des pâtes au beurre.
+utt0227 Chacun de nous a son propre chemin.
+utt0228 Le parfum de la rose remplit la pièce.
+utt0229 Le loup gris rôde près de la bergerie.
+utt0230 Le dindon et le lapin dorment dans la grange.
+utt0231 Quatre chats noirs guettent la souris blanche.
+utt0232 La cloche et la glace résonnent ensemble.
+utt0233 Jeanne joue du piano avec ses doigts agiles.
+utt0234 Les filles et les garçons lisent dans la cour.
+utt0235 Le gymnaste répète ses sauts sur le tapis.
+utt0236 Nous aimons écouter la pluie tomber sur le toit.
+utt0237 La cuisine sent bon le citron et le thym.
+utt0238 Le facteur a laissé un mot dans la boîte.
+utt0239 Ils discutent de tout et de rien sous le porche.
+utt0240 Le voisinage se retrouve chaque dimanche au parc.
+utt0241 Ma cousine prépare un exposé pour sa classe.
+utt0242 La petite montagne domine la plaine ensoleillée.
+utt0243 Le guichet ferme dans dix minutes exactement.
+utt0244 Le hibou veille sur la ferme toute la nuit.
+utt0245 Les ramiers se posent sur le toit de la grange.
+utt0246 Leurs jumelles sont sur la table du salon.
+utt0247 La brise marine rafraîchit la terrasse.
+utt0248 Nous gardons toujours une lampe de poche à portée de main.
+utt0249 Le menu du jour est écrit à la craie.
+utt0250 La machine à laver vibre fort dans la buanderie.
+utt0251 Le facteur traverse le village à toute vitesse.
+utt0252 Un silence gêné suit la chute du vase.
+utt0253 Dans la campagne, les moutons broutent l'herbe au pied de la montagne.
+utt0254 Le champignon pousse près des fougères humides.
+utt0255 Un agneau gris saute dans la prairie.
+utt0256 La ligne d'horizon sépare le ciel de la mer.
+utt0257 Ce geste est simple, mais il est digne d'intérêt.
+utt0258 Le signal vert permet enfin de passer.
+utt0259 Son chignon noir ondule dans le vent.
+utt0260 Le mignon chaton dort dans le panier.
+utt0261 Il gagne toujours au jeu des cartes.
+utt0262 La montagne est couverte de sapins et de rochers.
+utt0263 Nous avons mangé des champignons à la crème.
+utt0264 La campagne est calme au crépuscule.
+utt0265 Deux amis se retrouvent chaque jeudi au café.
+utt0266 Le bleu marine va bien avec cette veste.
+utt0267 Ils jouent ensemble un jeu de société le jeudi.
+utt0268 La pieuvre se cache entre les rochers.
+utt0269 Un vœu secret accompagne chaque bougie soufflée.
+utt0270 Le meuble bas est en bois massif.
+utt0271 Il a peu de temps, mais il aide souvent.
+utt0272 Le beurre fondu nappe les légumes chauds.
+utt0273 Une fleur sauvage pousse au bord du chemin.
+utt0274 Leur maison est au bout de la ruelle.
+utt0275 La peur du vide disparaît avec l'habitude.
+utt0276 Mon cœur bat vite pendant l'examen.
+utt0277 Ta sœur prépare un gâteau aux noix.
+utt0278 Nous attendons depuis une heure près du portail.
+utt0279 La lueur de la lampe éclaire le couloir.
+utt0280 Neuf amis participent au repas du dimanche.
+utt0281 Les œufs brouillés sont prêts pour le petit-déjeuner.
+utt0282 Il fait nuit, la lune brille déjà.
+utt0283 Huit visiteurs attendent devant la billetterie.
+utt0284 Tu huiles les roues de la chaise roulante.
+utt0285 Les huîtres sont servies avec du citron.
+utt0286 Il fait nuit noire depuis vingt heures.
+utt0287 Les fruits du verger sont mûrs cette année.
+utt0288 Lui aussi prépare les bagages pour le voyage.
+utt0289 Le pain cuit dans le four du boulanger.
+utt0290 La lune se lève lentement derrière les toits.
+utt0291 Un bruit étrange sort de la chambre.
+utt0292 Elle essuie la vaisselle avec un torchon.
+utt0293 Vingt-cinq invités sont attendus pour le dîner.
+utt0294 Cinq minutes de pause suffisent pour reprendre des forces.
+utt0295 Le train de onze heures part du quai numéro trois.
+utt0296 Il boit un verre de vin blanc avant le repas.
+utt0297 Le train direct ne s'arrête pas en route.
+utt0298 Un train rapide traverse la plaine enneigée.
+utt0299 Il a besoin de repos après une semaine difficile.
+utt0300 Prends soin de toi pendant cette période chargée.
+utt0301 Mon bras droit me fait mal depuis trois jours.
+utt0302 Quand tu as le temps, appelle-moi pour prendre des nouvelles.
+utt0303 Est-ce que tu préfères le thé vert ou le café ?
+utt0304 Pourquoi as-tu choisi cette couleur pour le mur ?
+utt0305 Qui a laissé la porte de la cuisine ouverte ?
+utt0306 Combien de courses reste-t-il à faire avant ce soir ?
+utt0307 Peux-tu me dire où se trouve le cahier de texte ?
+utt0308 Nous faisons les courses le mardi et le samedi.
+utt0309 D'abord je lis le message, ensuite je réponds.
+utt0310 Il pleut beaucoup, alors nous restons à la maison.
+utt0311 Bien qu'il soit fatigué, il finit son travail.
+utt0312 Tandis que le dîner se prépare, les enfants jouent.
+utt0313 En revanche, la matinée s'est très bien passée.
+utt0314 Malgré les retards, tous les invités sont arrivés.
+utt0315 Ainsi, nous évitons les erreurs de transcription.
+utt0316 Premièrement, vérifie la connexion. Deuxièmement, ouvre l'application.
+utt0317 Il y a quatre pommes, trois poires et deux bananes sur la table.
+utt0318 Le facteur passe vers neuf heures, jamais après midi.
+utt0319 Nous avons acheté deux kilos de farine et un sachet de sucre.
+utt0320 Ma voisine m'a prêté un parapluie et un imperméable.
+utt0321 Le mécanicien a changé les pneus et vérifié les freins.
+utt0322 Chaque matin, je lis les nouvelles en buvant mon café.
+utt0323 Après la pluie, l'air sent la terre mouillée.
+utt0324 Le spectacle a duré une heure et demie.
+utt0325 Nous avons ri beaucoup pendant ce film comique.
+utt0326 La bibliothèque municipale ferme à dix-huit heures.
+utt0327 Ferme le robinet, l'eau coule encore.
+utt0328 Ouvre le couvercle de la casserole.
+utt0329 Pose les cartes sur la table.
+utt0330 Appuie longuement sur le bouton du haut.
+utt0331 Le verre est sale, il faut le laver.
+utt0332 Mets un peu moins de sucre.
+utt0333 Écris la date en haut de la page.
+utt0334 Tourne la clé dans la serrure.
+utt0335 Le sac est lourd, prends les anses.
+utt0336 Rince le bol avant de le ranger.
+utt0337 Le garagiste répare le moteur avec une grande attention.
+utt0338 Le juge a lu le dossier pendant deux heures.
+utt0339 La caissière scanne les produits un par un.
+utt0340 Le jardinier arrose les plantes avant le lever du soleil.
+utt0341 Le professeur distribue les copies à ses élèves.
+utt0342 Nous avons perdu le reçu de la machine à café.
+utt0343 La dame au comptoir sourit aux clients.
+utt0344 Mon cousin prépare son concours pour l'été prochain.
+utt0345 Le facteur a un nouveau trajet dans le village.
+utt0346 Un pêcheur ramène sa barque sur le sable.
+utt0347 La foule s'éloigne du stade après le match.
+utt0348 Le garde surveille l'entrée du bâtiment toute la nuit.
+utt0349 Nous prenons le chemin de traverse jusqu'au pont.
+utt0350 La compagnie a organisé un voyage dans les montagnes.
+utt0351 Il enseigne les maths dans un collège de campagne.
+utt0352 Le paysage est digne d'être photographié.
+utt0353 La ligne du bus passe devant l'hôpital.
+utt0354 Un panneau indique le signal de sortie.
+utt0355 Elle se baigne dans le lac dès le matin.
+utt0356 Le règne de ce roi dure depuis vingt ans.
+utt0357 La foule grogne contre les retards du train.
+utt0358 La Bretagne est réputée pour ses plages sauvages.
+utt0359 Le diagnostic du médecin rassure toute la famille.
+utt0360 Nous enseignons l'orthographe aux enfants avec patience.
+utt0361 Un signe de la main suffit pour les saluer.
+utt0362 Les montagnards descendent au village chaque hiver.
+utt0363 Il soigne ses plantes avec un engrais naturel.
+utt0364 Une enseigne lumineuse éclaire la rue tranquille.
+utt0365 La campagne est belle au printemps, avec les fleurs.
+utt0366 Papa prépare les pâtes pour tout le monde.
+utt0367 Tu devrais baigner le chien aujourd'hui.
+utt0368 Ce vieux pont enjambe la rivière calme.
+utt0369 La boisson est trop sucrée pour les enfants.
+utt0370 L'enseignante écrit au tableau avec de la craie.
+utt0371 Il a gagné le premier prix du concours.
+utt0372 Un mignon couple danse sur la place du village.
+utt0373 Le règlement interdit de traverser ici.
+utt0374 Nous ramassons des champignons en forêt.
+utt0375 La montagne noire domine toute la région.
+utt0376 Elle parle avec dignité devant l'assemblée.
+utt0377 Le signal sonore prévient les passagers.
+utt0378 Le compagnon du boulanger arrive à l'aube.
+utt0379 Le règne du silence suit la tempête.
+utt0380 Quand nous sommes arrivés, tout le monde était déjà parti.
+utt0381 Après une longue marche, nous avons installé le camp sous les arbres.
+utt0382 Le dimanche matin, le marché du centre accueille les producteurs locaux.
+utt0383 Pendant l'orage, la lumière clignotait et le vent hurlait.
+utt0384 Si tu termines tôt, tu peux venir nous rejoindre au parc.
