@@ -229,6 +229,54 @@ ENRICHED_PROMPTS.extend(NATO_PROMPTS)
 ENRICHED_PROMPTS.extend(CORPUS_PROMPTS)
 ENRICHED_PROMPTS.extend(FULL_CORPUS_PROMPTS)
 
+# --- Mode « Lecture guidée » (zéro clic, exigence 17/11) ----------------------
+# Principe inspiré du wizard d'entraînement Windows/SAPI (lecture continue,
+# avancement automatique) MAIS sans sa dérive : jamais de moyenne d'essais
+# ratés. Un segment n'entre au manifeste que s'il passe la vérification texte ;
+# sinon il est rejeté (nouvelle tentative) ou conservé marqué « à réviser ».
+GUIDED_OK_SIM = 0.70  # similarité texte minimum pour valider automatiquement
+GUIDED_REVIEW_SIM = 0.45  # en dessous : échec -> nouvelle tentative du même prompt
+GUIDED_MAX_ATTEMPTS = 3  # après 3 échecs : meilleur (dernier) essai + révision finale
+
+
+def _normalize_for_match(text: str) -> str:
+    """Minuscules, sans accents ni ponctuation — comparable STT <-> texte cible."""
+    import unicodedata
+
+    lowered = unicodedata.normalize("NFKD", text.lower())
+    deaccented = "".join(c for c in lowered if not unicodedata.combining(c))
+    # Apostrophes supprimées (« j'ai » == « jai ») ; le reste de la ponctuation
+    # devient un espace puis les espaces doubles sont fusionnés.
+    deaccented = deaccented.replace("'", "").replace("\u2019", "")
+    return " ".join("".join(c if c.isalnum() else " " for c in deaccented).split())
+
+
+def text_similarity(a: str, b: str) -> float:
+    """Similarité 0..1 (1 = identique) = 1 - distance de Levenshtein normalisée."""
+    na, nb = _normalize_for_match(a), _normalize_for_match(b)
+    if not na and not nb:
+        return 1.0
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    # Tableau de Levenshtein (phrases courtes : coût négligeable)
+    prev = list(range(len(nb) + 1))
+    for i, ca in enumerate(na, start=1):
+        curr = [i]
+        for j, cb in enumerate(nb, start=1):
+            curr.append(
+                min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ca != cb))
+            )
+        prev = curr
+    return 1.0 - prev[-1] / max(len(na), len(nb))
+
+
+def is_stutter_command(text: str) -> bool:
+    """Détecte la commande vocale « J'ai fourché » (variante « Oups ») dite par l'utilisateur."""
+    n = _normalize_for_match(text)
+    return "fourche" in n or n in {"oups", "jai rate", "jai foche", "jai fourche"}
+
 
 class CalibrationStudioWindow(QWidget):
     """Fenêtre d'étalonnage avec transcription GPU immédiate et apprentissage automatique A -> B."""
@@ -260,6 +308,16 @@ class CalibrationStudioWindow(QWidget):
         )
         self._auto_stop_requested = False
         self.stt_engine: WhisperDirectMLEngine | None = None
+
+        # --- Mode « Lecture guidée » (zéro clic, 17/11) ---
+        self._guided = True  # auto-validation + avancement (désactivable)
+        self._attempts = 0  # essais sur le prompt courant (3 max avant révision)
+        self._pending_review = False  # le segment en cours sera marqué « à réviser »
+        self._last_validated_index = -1  # dernier prompt validé automatiquement
+        self._review_ids: list[str] = [
+            str(e.get("id")) for e in self.recorded_entries if e.get("review")
+        ]
+        self._visited_reviews: set[str] = set()  # ids déjà revus (anti-boucle)
 
         self._is_recording = False
         self._recorded_chunks: list[np.ndarray] = []
@@ -425,6 +483,23 @@ class CalibrationStudioWindow(QWidget):
         header_row.addWidget(self.mic_combo)
         header_row.addStretch(1)
 
+        # Mode Lecture guidée (zéro clic) — exigence 17/11
+        self.guided_btn = QPushButton("🚀 Lecture guidée : ON")
+        self.guided_btn.setCheckable(True)
+        self.guided_btn.setChecked(True)
+        self.guided_btn.setToolTip(
+            "Avancement automatique après vérification texte ; dites « J'ai fourché » "
+            "pour rejeter. OFF = validation manuelle (✅/🔄)."
+        )
+        self.guided_btn.clicked.connect(self._toggle_guided)
+        header_row.addWidget(self.guided_btn)
+
+        # File de révision des segments douteux (une seule passe)
+        self.review_btn = QPushButton("⚠️ Réviser : 0")
+        self.review_btn.clicked.connect(self._goto_next_review)
+        self.review_btn.setVisible(False)
+        header_row.addWidget(self.review_btn)
+
         self.progress_label = QLabel("Étape 1 / 12")
         self.progress_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         self.progress_label.setStyleSheet("color: #38bdf8;")
@@ -564,7 +639,17 @@ class CalibrationStudioWindow(QWidget):
                     k66_index_in_combo = self.mic_combo.count() - 1
         self.mic_combo.setCurrentIndex(k66_index_in_combo)
 
-    def _load_prompt(self, index: int) -> None:
+    def _load_prompt(self, index: int, *, auto: bool = False) -> None:
+        # Changement de phrase : on repart à zéro côté tentatives ; rechargement
+        # du MÊME prompt (« j'ai fourché ») conserve le compteur d'essais.
+        if index != self.current_index:
+            self._attempts = 0
+            # Navigation MANUELLE (⬅️/⏭) : plus de « dernier validé » à rejeter.
+            # La navigation automatique (auto=True) garde la référence, même si
+            # elle saute des prompts déjà enregistrés.
+            if not auto and index != self._last_validated_index + 1:
+                self._last_validated_index = -1
+        self._pending_review = False
         self.current_index = index
         p = self.prompts[index]
         self.progress_label.setText(f"Étape {index + 1} / {len(self.prompts)}")
@@ -584,6 +669,158 @@ class CalibrationStudioWindow(QWidget):
         self._current_alts = []
         self._stop_playback()
         self.play_btn.setEnabled(False)
+        self._update_review_button()
+
+    # --- Mode « Lecture guidée » (zéro clic) -------------------------------
+    def _toggle_guided(self) -> None:
+        self._guided = self.guided_btn.isChecked()
+        self.guided_btn.setText(
+            "🚀 Lecture guidée : ON" if self._guided else "🚀 Lecture guidée : OFF"
+        )
+        if not self._guided:
+            self.validation_frame.setVisible(self._current_audio is not None)
+
+    def _update_review_button(self) -> None:
+        n = len(self._review_ids)
+        self.review_btn.setText(f"⚠️ Réviser : {n}")
+        self.review_btn.setVisible(n > 0)
+
+    def _guided_decide(self) -> None:
+        """Décision automatique après transcription (mode guidé) — zéro clic.
+
+        1. « J'ai fourché » -> rejet (segment courant, ou le dernier validé si
+           on vient déjà d'avancer d'une phrase) ;
+        2. similarité texte OK -> validation + passage à la suite ;
+        3. doute -> validation MARQUÉE « à réviser » (fin de session) ;
+        4. échec -> nouvelle tentative du même prompt (jamais de moyenne),
+           3 échecs -> dernier essai conservé + marqué à réviser.
+        """
+        p = self.prompts[self.current_index]
+        target = self.target_edit.text().strip() or p.expected_text
+        heard = self._current_heard_text
+        self._attempts += 1
+
+        # 1) Commande vocale « J'ai fourché »
+        if is_stutter_command(heard):
+            just_advanced = self._last_validated_index == self.current_index - 1
+            if just_advanced and text_similarity(heard, target) < GUIDED_REVIEW_SIM:
+                # On est déjà sur la phrase suivante : il parle de la PREMIÈRE
+                # (validée automatiquement) -> on la rejette et on la relit.
+                self._reject_last_validated()
+            else:
+                # Phrase en cours lue puis signalée (ou aucun validé) -> reprise.
+                self.heard_label.setText("🗑️ Segment rejeté à votre demande — relisez la phrase")
+                self._discard_and_retry()
+            return
+
+        # 2-4) Vérification texte
+        sim = text_similarity(heard, target) if heard else 0.0
+        if sim >= GUIDED_OK_SIM:
+            self._pending_review = False
+            self.heard_label.setText(
+                f"✅ Accepté automatiquement ({sim:.0%}) — passage à la phrase suivante"
+            )
+            self._validate_and_next()
+        elif sim >= GUIDED_REVIEW_SIM:
+            self._pending_review = True
+            self.heard_label.setText(
+                f"⚠️ Doute ({sim:.0%}) — conservé, à RÉVISER en fin de session (bouton ⚠️)"
+            )
+            self._validate_and_next()
+        elif self._attempts >= GUIDED_MAX_ATTEMPTS:
+            self._pending_review = True
+            self.heard_label.setText(
+                f"⚠️ {GUIDED_MAX_ATTEMPTS} essais — dernier essai conservé, marqué à RÉVISER"
+            )
+            self._validate_and_next()
+        else:
+            self._guided_retry()
+
+    def _guided_retry(self) -> None:
+        """Échec : abandonne l'audio (aucune moyenne) et reprend le MÊME prompt."""
+        attempts = self._attempts
+        self._discard_and_retry()
+        self.heard_label.setText(
+            f"❌ Pas reconnu ({attempts}/{GUIDED_MAX_ATTEMPTS} essai) — recommencez la même phrase"
+        )
+
+    def _reject_last_validated(self) -> None:
+        """Rejette le dernier segment validé automatiquement et revient dessus."""
+        idx = self._last_validated_index
+        if idx < 0 or idx >= len(self.prompts):
+            return
+        pid = self.prompts[idx].id
+        self._stop_playback()
+        self._recorded_entries_discard(pid)
+        if pid in self._review_ids:
+            self._review_ids.remove(pid)
+        self._last_validated_index = -1
+        self.heard_label.setText("🗑️ Dernière phrase rejetée — relisez-la")
+        self._load_prompt(idx)
+        QTimer.singleShot(700, self._auto_start_recording)
+
+    def _next_guided_index(self) -> int | None:
+        """Prochain prompt à faire : non enregistré, ou restant en file de révision."""
+        recorded = {e.get("id") for e in self.recorded_entries}
+        for i in range(self.current_index + 1, len(self.prompts)):
+            p = self.prompts[i]
+            if p.id not in recorded or p.id in self._review_ids:
+                return i
+        # Fin de la file : un ou plusieurs segments restent à réviser ?
+        for i, p in enumerate(self.prompts):
+            if p.id in self._review_ids:
+                return i
+        return None
+
+    def _goto_next_review(self) -> None:
+        """Va écouter (et éventuellement refaire) le premier segment douteux."""
+        if not self._review_ids:
+            return
+        pid = self._review_ids.pop(0)
+        self._visited_reviews.add(pid)
+        self._update_review_button()
+        idx = next(
+            (i for i, p in enumerate(self.prompts) if p.id == pid), None
+        )
+        if idx is None:
+            return
+        self._load_prompt(idx)
+        entry = next((e for e in self.recorded_entries if e.get("id") == pid), None)
+        audio = None
+        if entry is not None:
+            audio = self._load_wav(Path(str(entry.get("raw_wav", ""))))
+        if audio is not None:
+            self._current_audio = audio
+            self.play_btn.setEnabled(True)
+            self.validation_frame.setVisible(True)
+            self.heard_label.setText(
+                "⚠️ Segment douteux : 🔊 Écoutez, puis ✅ garder ou 🔄 refaire"
+            )
+        else:
+            self.heard_label.setText("⚠️ Segment douteux : ré-enregistrez-le")
+            QTimer.singleShot(500, self._auto_start_recording)
+
+    def _recorded_entries_discard(self, pid: str) -> None:
+        """Retire une entrée du manifeste (rejet) et réécrit le fichier."""
+        self.recorded_entries = [
+            e for e in self.recorded_entries if e.get("id") != pid
+        ]
+        self._save_manifest()
+
+    def _save_manifest(self) -> None:
+        with open(self.manifest_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {"samples": self.recorded_entries}, f, ensure_ascii=False, indent=2
+            )
+
+    def _load_wav(self, path: Path) -> np.ndarray | None:
+        try:
+            with wave.open(str(path), "rb") as wf:
+                data = wf.readframes(wf.getnframes())
+                audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+            return audio if audio.size else None
+        except Exception:
+            return None
 
     def _skip_current(self) -> None:
         if self.current_index + 1 < len(self.prompts):
@@ -703,8 +940,22 @@ class CalibrationStudioWindow(QWidget):
             self._current_heard_text = res.text
             self._current_alts = res.alternatives
             target_txt = self.target_edit.text().strip()
+
+            if self._guided:
+                # Lecture guidée : la décision (accepter / doute / rejeter) est
+                # prise ici, sans aucun clic — voir `_guided_decide`.
+                self.record_btn.setEnabled(False)
+                self.record_btn.setText("🚀 Lecture guidée — décision automatique…")
+                self.record_btn.setStyleSheet("background-color: #334155;")
+                self._guided_decide()
+                return
+
             self.heard_label.setText(
                 f"Entendu par Whisper ({res.total_ms:.0f} ms) : « {res.text} »  ➔  Sera associé à : « {target_txt} »"
+            )
+        elif self._guided:
+            self.heard_label.setText(
+                "⏳ Moteur pas encore chargé — validation manuelle en attendant"
             )
 
         self.record_btn.setEnabled(False)
@@ -776,6 +1027,7 @@ class CalibrationStudioWindow(QWidget):
             "expected_text": expected_text,
             "heard_text": self._current_heard_text,
             "alternatives": self._current_alts[:3],
+            "review": bool(self._pending_review),
             "raw_wav": str(raw_path),
             "norm_wav": str(norm_path),
             "duration_s": round(duration_s, 3),
@@ -790,13 +1042,27 @@ class CalibrationStudioWindow(QWidget):
             e for e in self.recorded_entries if e.get("id") != p.id
         ]
         self.recorded_entries.append(entry)
+        # File de révision : une seule passe (jamais de boucle) — un segment
+        # déjà revisité n'y revient pas, même s'il reste douteux.
+        if self._pending_review:
+            if p.id not in self._review_ids and p.id not in self._visited_reviews:
+                self._review_ids.append(p.id)
+        elif p.id in self._review_ids:
+            self._review_ids.remove(p.id)
+        self._update_review_button()
+        self._save_manifest()
+        self._last_validated_index = self.current_index
 
-        with open(self.manifest_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {"samples": self.recorded_entries}, f, ensure_ascii=False, indent=2
-            )
-
-        if self.current_index + 1 < len(self.prompts):
+        if self._guided:
+            # Lecture guidée : saute les prompts déjà enregistrés, puis les
+            # segments restant à réviser ; fin de file -> fermeture.
+            nxt = self._next_guided_index()
+            if nxt is None:
+                self.close()
+            else:
+                self._load_prompt(nxt, auto=True)
+                QTimer.singleShot(500, self._auto_start_recording)
+        elif self.current_index + 1 < len(self.prompts):
             self._load_prompt(self.current_index + 1)
             # Enchaînement AUTOMATIQUE sur l'enregistrement suivant : pas de
             # clic « Démarrer » supplémentaire (contrainte d'accessibilité 16/11).

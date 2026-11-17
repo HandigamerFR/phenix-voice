@@ -21,6 +21,7 @@ from phenix_voice.ui.calibration_studio import (
     CORPUS_TEXTS,
     ENRICHED_PROMPTS,
     FULL_CORPUS_PROMPTS,
+    GUIDED_MAX_ATTEMPTS,
     NATO_PROMPTS,
     NATO_VOCABULARY,
     CalibrationStudioWindow,
@@ -267,3 +268,243 @@ def test_hud_studio_signal_opens_the_studio(qapp) -> None:
     signals.studio_requested.emit()  # équivalent de l'émission depuis le thread STT
     assert spy.count() == 1
     assert opened == [1]
+
+
+# --- Mode « Lecture guidée » (zéro clic, exigence 17/11) ---------------------
+
+
+def test_text_similarity_ignores_accents_case_and_punctuation() -> None:
+    from phenix_voice.ui.calibration_studio import text_similarity
+
+    assert text_similarity("Écoute.", "écoute") == 1.0
+    assert text_similarity("J'ai écrit une lettre", "jai ecrit une lettre !") == 1.0
+    assert text_similarity("", "") == 1.0
+    assert text_similarity("Le renard brun saute.", "xyz") < 0.3
+    assert text_similarity("", "phrase entière") == 0.0
+
+
+def test_stutter_command_detection() -> None:
+    from phenix_voice.ui.calibration_studio import is_stutter_command
+
+    assert is_stutter_command("J'ai fourché")
+    assert is_stutter_command("jai fourche.")
+    assert is_stutter_command("Oups")
+    # Une phrase du corpus qui ressemble à une commande reste de la dictée
+    assert not is_stutter_command("Le renard brun saute près du vieux pont.")
+    assert not is_stutter_command("J'ai écrit une lettre à ma sœur.")
+
+
+def _make_guided_window(qapp, tmp_path, monkeypatch):
+    """Fenêtre de test : moteur GPU et flux audio réels neutralisés."""
+    import numpy as np
+
+    from phenix_voice.ui import calibration_studio as cs
+
+    monkeypatch.setattr(
+        cs.CalibrationStudioWindow,
+        "_init_gpu_engine",
+        lambda self: None,  # pas de chargement Whisper dans les tests
+    )
+    monkeypatch.setattr(cs.sd, "play", lambda *a, **k: None)
+    monkeypatch.setattr(cs.sd, "stop", lambda *a, **k: None)
+
+    class FakeStream:
+        def __init__(self, **kwargs) -> None:
+            self.started = False
+
+        def start(self) -> None:
+            self.started = True
+
+        def stop(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    streams: list[FakeStream] = []
+    monkeypatch.setattr(
+        cs.sd,
+        "InputStream",
+        lambda **kw: streams.append(FakeStream(**kw)) or streams[-1],
+    )
+
+    win = cs.CalibrationStudioWindow(output_dir=tmp_path / "calib")
+    win._test_streams = streams
+    return win
+
+
+class _FakeEngine:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def transcribe(self, audio):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(text=self.text, alternatives=[], total_ms=12.0)
+
+
+def _simulate_segment(win, heard_text: str) -> None:
+    """Simule un enregistrement complet avec la transcription donnée."""
+    import numpy as np
+
+    win.stt_engine = _FakeEngine(heard_text)
+    win._is_recording = True
+    win._recorded_chunks = [np.zeros(512, dtype=np.float32)]
+    win._auto_stop_requested = False
+    win._stop_recording()
+
+
+def test_guided_auto_validates_good_match_without_any_click(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """Lecture guidée : transcription conforme -> validation + phrase suivante, 0 clic."""
+    from PySide6.QtTest import QTest
+
+    win = _make_guided_window(qapp, tmp_path, monkeypatch)
+    try:
+        assert win._guided
+        first = win.current_index
+        expected = win.prompts[first].expected_text
+
+        _simulate_segment(win, expected)
+
+        assert win.current_index == first + 1, "aucun passage à la phrase suivante"
+        assert len(win.recorded_entries) == 1
+        entry = win.recorded_entries[0]
+        assert entry["id"] == win.prompts[first].id
+        assert entry["review"] is False
+        assert entry["heard_text"] == expected
+        # La phrase suivante enregistre SEULE (aucun clic « Démarrer »)
+        QTest.qWait(900)
+        assert win._is_recording, "l'enregistrement automatique n'a pas demarre"
+    finally:
+        if win._is_recording:
+            win._toggle_recording()
+        win.close()
+
+
+def test_guided_retries_same_prompt_on_bad_match(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """Échec de vérification -> même phrase relue, audio abandonné (jamais de moyenne)."""
+    from PySide6.QtTest import QTest
+
+    win = _make_guided_window(qapp, tmp_path, monkeypatch)
+    try:
+        first = win.current_index
+        _simulate_segment(win, "complètement différent de la phrase attendue")
+
+        assert win.current_index == first, "il ne faut PAS avancer sur un échec"
+        assert win._current_audio is None, "l'audio raté doit être abandonné"
+        assert win._attempts == 1
+        assert not win.recorded_entries
+        # Reprise automatique du MÊME prompt (sans clic)
+        QTest.qWait(900)
+        assert win._is_recording
+    finally:
+        if win._is_recording:
+            win._toggle_recording()
+        win.close()
+
+
+def test_guided_keeps_last_attempt_marked_review_after_three_failures(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """3 échecs -> dernier essai conservé + marqué « à réviser » (pas de blocage)."""
+    from PySide6.QtTest import QTest
+
+    import numpy as np
+
+    win = _make_guided_window(qapp, tmp_path, monkeypatch)
+    try:
+        first = win.current_index
+        for _ in range(GUIDED_MAX_ATTEMPTS):
+            win._current_audio = np.zeros(1600, dtype=np.float32)
+            win._current_heard_text = "toujours pas la phrase attendue"
+            win._guided_decide()
+
+        assert win.current_index == first + 1, "après 3 essais, on avance quand même"
+        assert len(win.recorded_entries) == 1
+        assert win.recorded_entries[0]["review"] is True
+        assert win._review_ids == [win.prompts[first].id]
+        assert win.review_btn.text().endswith("1")
+    finally:
+        QTest.qWait(700)
+        if win._is_recording:
+            win._toggle_recording()
+        win.close()
+
+
+def test_guided_jai_fourche_rejects_the_last_validated_phrase(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """« J'ai fourché » dit après avancement -> rejette la PREMIÈRE phrase validée."""
+    from PySide6.QtTest import QTest
+
+    import numpy as np
+
+    win = _make_guided_window(qapp, tmp_path, monkeypatch)
+    try:
+        first = win.current_index
+        # Phrase N validée automatiquement (transcription conforme)
+        win._current_audio = np.zeros(1600, dtype=np.float32)
+        win._current_heard_text = win.prompts[first].expected_text
+        win._pending_review = False
+        win._validate_and_next()
+        assert win.current_index == first + 1
+        assert any(e["id"] == win.prompts[first].id for e in win.recorded_entries)
+
+        # Sur la phrase N+1, il dit « j'ai fourché » (sans lire la phrase)
+        _simulate_segment(win, "j'ai fourché")
+
+        # Retour sur N, entrée retirée du manifeste
+        assert win.current_index == first, "il faut revenir sur la phrase rejetée"
+        assert not any(
+            e["id"] == win.prompts[first].id for e in win.recorded_entries
+        )
+    finally:
+        QTest.qWait(900)
+        if win._is_recording:
+            win._toggle_recording()
+        win.close()
+
+
+def test_guided_validation_preserves_existing_manifest_entries(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """Les enregistrements déjà effectués (78 en conditions réelles) sont conservés."""
+    import json
+
+    import numpy as np
+
+    calib = tmp_path / "calib"
+    (calib / "samples").mkdir(parents=True)
+    existing = [
+        {"id": "nato_alpha", "expected_text": "Alpha", "raw_wav": "x.wav"},
+        {"id": "utt0001", "expected_text": "phrase un", "raw_wav": "y.wav"},
+    ]
+    (calib / "manifest.json").write_text(
+        json.dumps({"samples": existing}), encoding="utf-8"
+    )
+
+    win = _make_guided_window(qapp, tmp_path, monkeypatch)
+    try:
+        assert len(win.recorded_entries) == 2
+        # On démarre au premier prompt non enregistré (ni nato_alpha ni utt0001)
+        assert win.prompts[win.current_index].id not in {"nato_alpha", "utt0001"}
+
+        win._current_audio = np.zeros(1600, dtype=np.float32)
+        win._current_heard_text = ""
+        win._pending_review = False
+        win._validate_and_next()
+
+        ids = [e["id"] for e in win.recorded_entries]
+        assert "nato_alpha" in ids and "utt0001" in ids, "perte d'enregistrements !"
+        assert len(win.recorded_entries) == 3
+    finally:
+        from PySide6.QtTest import QTest
+
+        QTest.qWait(700)
+        if win._is_recording:
+            win._toggle_recording()
+        win.close()
