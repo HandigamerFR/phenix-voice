@@ -181,8 +181,89 @@ def test_validation_auto_starts_the_next_recording_without_click(
         assert win._is_recording, "l'enregistrement automatique n'a pas demarre"
         assert streams and streams[-1].started
         # Le bouton reflète l'état « en train d'enregistrer »
-        assert "ARRÊTER" in win.record_btn.text()
+        assert "Parlez" in win.record_btn.text()
     finally:
         if win._is_recording:
             win._toggle_recording()
         win.close()
+
+
+def test_open_studio_from_app_sleeps_dictation_and_wakes_on_close(
+    monkeypatch
+) -> None:
+    """Accès depuis l'app (bouton 🎙️ / « Ouvrir le studio ») : veille dictée + réveil."""
+    import phenix_voice.ui.calibration_studio as cs
+    from phenix_voice.main import PhenixVoiceController
+
+    created: dict = {}
+
+    class FakeStudio:
+        def __init__(self, on_close=None) -> None:
+            created["on_close"] = on_close
+            self.visible = False
+            self.loaded_index = None
+
+        def isVisible(self) -> bool:
+            return self.visible
+
+        def _load_prompt(self, index: int) -> None:
+            self.loaded_index = index
+
+        def _first_missing_index(self) -> int:
+            return 7
+
+        def show(self) -> None:
+            self.visible = True
+
+        def raise_(self) -> None:
+            pass
+
+        def activateWindow(self) -> None:
+            pass
+
+    monkeypatch.setattr(cs, "CalibrationStudioWindow", FakeStudio)
+
+    sleep_calls: list[str] = []
+    fake = SimpleNamespace(
+        _studio_window=None,
+        _sleep_before_studio=False,
+        is_sleeping=False,
+        is_muted=False,
+        injection_logger=SimpleNamespace(log_action=lambda *a, **k: None),
+    )
+
+    def fake_toggle_sleep(source_or_checked="ui", **details) -> None:
+        sleep_calls.append(str(source_or_checked))
+        fake.is_sleeping = not fake.is_sleeping
+
+    fake.toggle_sleep = fake_toggle_sleep
+    fake._on_studio_closed = lambda: PhenixVoiceController._on_studio_closed(fake)
+
+    # Ouverture : reprise au premier manquant + dictée en veille
+    PhenixVoiceController.open_calibration_studio(fake)
+    assert fake._studio_window is not None
+    assert fake._studio_window.loaded_index == 7
+    assert fake._studio_window.visible
+    assert sleep_calls == ["studio"]
+    assert fake.is_sleeping is True
+
+    # Fermeture du Studio : réveil automatique de la dictée
+    PhenixVoiceController._on_studio_closed(fake)
+    assert sleep_calls == ["studio", "studio_closed"]
+    assert fake.is_sleeping is False
+
+
+def test_hud_studio_signal_opens_the_studio(qapp) -> None:
+    """La commande vocale (thread STT) passe par le signal → le callback d'ouverture."""
+    from PySide6.QtTest import QSignalSpy
+
+    from phenix_voice.ui.hud import HUDSignals
+
+    opened: list[int] = []
+    signals = HUDSignals()
+    spy = QSignalSpy(signals.studio_requested)
+    signals.studio_requested.connect(lambda: opened.append(1))
+
+    signals.studio_requested.emit()  # équivalent de l'émission depuis le thread STT
+    assert spy.count() == 1
+    assert opened == [1]

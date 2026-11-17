@@ -104,6 +104,8 @@ class HUDSignals(QObject):
     # (« epellation » | « correction » | « fenetre_epellation » |
     # « fenetre_correction », position curseur ou -1 si non concerné)
     edit_field_clicked = Signal(str, int)
+    # Ouverture du Studio d'étalonnage depuis une commande vocale (thread STT)
+    studio_requested = Signal()
 
 
 class CorrectionWindow(QWidget):
@@ -713,6 +715,7 @@ class PhenixHUD(QWidget):
         on_spelling_text_changed: Callable[[str], None] | None = None,
         on_close_spelling: Callable[[], None] | None = None,
         on_edit_field_clicked: Callable[[str, int], None] | None = None,
+        on_open_studio: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.on_toggle_mute = on_toggle_mute
@@ -726,6 +729,7 @@ class PhenixHUD(QWidget):
         self.on_quit = on_quit
         self.on_correction_text_changed = on_correction_text_changed
         self.on_add_spoken_form = on_add_spoken_form
+        self.on_open_studio = on_open_studio
         self._drag_offset: QPoint | None = None
         self._is_noactivate = True
 
@@ -745,6 +749,10 @@ class PhenixHUD(QWidget):
         # Clic diagnostique sur un champ/fenêtre (log distance, décision 15/11)
         if on_edit_field_clicked is not None:
             self.signals.edit_field_clicked.connect(on_edit_field_clicked)
+        # Studio d'étalonnage : le clic bouton appelle le callback directement
+        # (thread GUI) ; la commande vocale passe par le signal (thread STT).
+        if on_open_studio is not None:
+            self.signals.studio_requested.connect(on_open_studio)
 
         # Fenêtre de correction SÉPARÉE (jusqu'à 9 alternatives + validation)
         self.correction_window = CorrectionWindow(
@@ -957,6 +965,17 @@ class PhenixHUD(QWidget):
         self.corr_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.corr_btn.clicked.connect(self.on_open_correction)
         top_row.addWidget(self.corr_btn)
+
+        # Accès direct au Studio d'étalonnage (exigence utilisateur 16-17/11)
+        self.studio_btn = QPushButton("🎙️ Studio")
+        self.studio_btn.setObjectName("studioBtn")
+        self.studio_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.studio_btn.setToolTip(
+            "Ouvrir le Studio d'étalonnage (corpus, mots OTAN, ré-enregistrement)"
+        )
+        if self.on_open_studio is not None:
+            self.studio_btn.clicked.connect(self.on_open_studio)
+        top_row.addWidget(self.studio_btn)
 
         self.scratch_btn = QPushButton("🛡️ Sans apprendre / Effacer")
         self.scratch_btn.setObjectName("scratchBtn")

@@ -38,6 +38,7 @@ class VoiceIntentType(str, Enum):
     SCRATCH_LAST = "scratch"         # « Effacer ça », « Rayez ça »
     OUPS_NO_LEARN = "oups"           # « Annuler sans apprendre » (jette l'audio, ne pollue pas le profil)
     OPEN_CORRECTION = "correct"      # « Corriger ça », « Corriger [mot] »
+    OPEN_STUDIO = "open_studio"      # « Ouvrir le studio » (étalonnage / corpus)
     CHOOSE_ALT = "choose_alt"        # « Choisir un / deux / trois »
     SELECT_TARGET = "select_target"  # « Sélectionner [mot] »
     PRESS_ENTER = "press_enter"      # « Presser Entrée »
@@ -180,6 +181,16 @@ OPEN_CORRECTION_COMMANDS: set[str] = {
     "corrige ça",
 }
 
+OPEN_STUDIO_COMMANDS: set[str] = {
+    "ouvrir le studio",
+    "ouvre le studio",
+    "ouvrir studio",
+    "studio étalonnage",
+    "studio d'étalonnage",
+    "ouvrir le studio d'étalonnage",
+    "ouvrir l'étalonnage",
+}
+
 COMMAND_RECALIBRATION_COMMANDS: dict[str, str] = {
     "c'était une commande": "corriger ça",
     "cetait une commande": "corriger ça",
@@ -269,6 +280,7 @@ OUPS_KEYS = _index_set(OUPS_COMMANDS)
 SPELLING_ENTER_KEYS = _index_set(SPELLING_ENTER_COMMANDS)
 SPELLING_EXIT_KEYS = _index_set(SPELLING_EXIT_COMMANDS)
 OPEN_CORRECTION_KEYS = _index_set(OPEN_CORRECTION_COMMANDS)
+OPEN_STUDIO_KEYS = _index_set(OPEN_STUDIO_COMMANDS)
 COMMAND_RECALIBRATION_KEYS = _index_map(COMMAND_RECALIBRATION_COMMANDS)
 PRESS_ENTER_KEYS = _index_set(PRESS_ENTER_COMMANDS)
 CHOOSE_KEYS = _index_map(CHOOSE_MAP)
@@ -999,6 +1011,12 @@ class HybridPunctuationProcessor:
         if _hit(OPEN_CORRECTION_KEYS):
             return ProcessedUtterance(
                 intent=VoiceIntentType.OPEN_CORRECTION,
+                raw_text=raw_text,
+                mapped_text=mapped,
+            )
+        if _hit(OPEN_STUDIO_KEYS):
+            return ProcessedUtterance(
+                intent=VoiceIntentType.OPEN_STUDIO,
                 raw_text=raw_text,
                 mapped_text=mapped,
             )

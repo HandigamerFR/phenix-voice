@@ -61,6 +61,30 @@ def test_other_commands_still_match() -> None:
     assert proc.process("Phénix repos").intent == VoiceIntentType.SLEEP
 
 
+def test_open_studio_command_variants() -> None:
+    """« Ouvrir le studio » ouvre le Studio d'étalonnage (accès 16-17/11)."""
+    proc = HybridPunctuationProcessor()
+    for text in (
+        "Ouvrir le studio",
+        "ouvre le studio",
+        "studio étalonnage",
+        "Studio d'étalonnage",
+        "ouvrir le studio d'étalonnage",
+        "OUVRIR LE STUDIO !",
+    ):
+        got = proc.process(text)
+        assert got.intent == VoiceIntentType.OPEN_STUDIO, f"{text!r} -> {got.intent.value}"
+
+
+def test_open_studio_is_not_dictation_nor_other_commands() -> None:
+    proc = HybridPunctuationProcessor()
+    # Une phrase contenant « studio » reste de la dictée
+    r = proc.process("je vais au studio enregistrer ma voix")
+    assert r.intent == VoiceIntentType.DICTATION
+    # « Corriger ça » n'est pas dévoré par la nouvelle commande
+    assert proc.process("Corriger ça").intent == VoiceIntentType.OPEN_CORRECTION
+
+
 def test_dictation_is_not_grabbed_by_command_matching() -> None:
     proc = HybridPunctuationProcessor()
     r = proc.process("bonjour virgule comment allez-vous")
@@ -108,6 +132,7 @@ def test_spelling_mode_restricts_intents_to_letters_and_safety() -> None:
     for blocked in (
         VoiceIntentType.ENTER_SPELLING,  # déjà en épellation : sans effet
         VoiceIntentType.OPEN_CORRECTION,
+        VoiceIntentType.OPEN_STUDIO,  # pas d'étalonnage en plein épellage
         VoiceIntentType.CHOOSE_ALT,
         VoiceIntentType.SELECT_TARGET,
         VoiceIntentType.SCRATCH_LAST,

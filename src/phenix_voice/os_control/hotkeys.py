@@ -20,23 +20,43 @@ class GlobalInputMonitor:
         on_cursor_moved: Callable[..., None] | None = None,
         mute_key: keyboard.Key = keyboard.Key.f8,
         sleep_key: keyboard.Key = keyboard.Key.f9,
+        on_debug: Callable[..., None] | None = None,
     ) -> None:
         self.on_toggle_mute = on_toggle_mute
         self.on_toggle_sleep = on_toggle_sleep
         self.on_cursor_moved = on_cursor_moved
         self.mute_key = mute_key
         self.sleep_key = sleep_key
+        # Journal de diagnostic (F8/F9 vus, erreurs du callback) : une exception
+        # non interceptée dans le callback tue silencieusement le listener
+        # pynput — plus aucun raccourci après ça.
+        self.on_debug = on_debug
 
         self._kb_listener: keyboard.Listener | None = None
         self._mouse_listener: mouse.Listener | None = None
 
+    def _debug(self, event: str, **details) -> None:
+        if self.on_debug is not None:
+            try:
+                self.on_debug(event, **details)
+            except Exception:
+                pass
+
     def _on_key_press(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
+        try:
+            self._handle_key_press(key)
+        except Exception as exc:  # ne jamais laisser mourir le listener
+            self._debug("hotkey_error", error=repr(exc))
+
+    def _handle_key_press(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
         if key == self.mute_key:
+            self._debug("hotkey_seen", key="F8")
             try:
                 self.on_toggle_mute(source="hotkey", key="F8")
             except TypeError:
                 self.on_toggle_mute()
         elif key == self.sleep_key and self.on_toggle_sleep:
+            self._debug("hotkey_seen", key="F9")
             try:
                 self.on_toggle_sleep(source="hotkey", key="F9")
             except TypeError:

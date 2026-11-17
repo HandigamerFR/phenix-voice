@@ -144,6 +144,8 @@ class PhenixVoiceController:
         self._spelling_casing = SpellingCasingState()  # casse « Majuscule / Tout en majuscules »
         self._spelling_from_correction = False  # fenêtre d'épellation ouverte depuis la correction
         self._correction_target_hwnd: int = 0  # fenêtre cible à restaurer avant injection de correction manuelle
+        self._studio_window: Any = None  # Studio d'étalonnage ouvert depuis l'app
+        self._sleep_before_studio = False  # dictée en veille pendant l'étalonnage ?
 
         self._session_id = time.strftime("session_%Y%m%d_%H%M%S")
         self.trace_logger = SessionTraceLogger()
@@ -182,6 +184,8 @@ class PhenixVoiceController:
             on_close_spelling=self._exit_spelling_mode,
             # Clic diagnostique sur un champ/fenêtre (log distance 15/11)
             on_edit_field_clicked=self._on_edit_field_clicked,
+            # Studio d'étalonnage ouvert depuis l'app (bouton 🎙️ + « Ouvrir le studio »)
+            on_open_studio=self.open_calibration_studio,
         )
 
         self.segmenter = BreathSegmenter(
@@ -195,6 +199,7 @@ class PhenixVoiceController:
             on_toggle_mute=self.toggle_mute,
             on_toggle_sleep=self.toggle_sleep,
             on_cursor_moved=self._on_cursor_moved,
+            on_debug=self.injection_logger.log_action,
         )
 
         self._stt_thread = threading.Thread(
@@ -334,6 +339,43 @@ class PhenixVoiceController:
         # La veille vocale ferme la fenêtre d'épellation (la reprise n'est pas mémorisée).
         if self.is_sleeping:
             self._exit_spelling_mode()
+
+    # --- Studio d'étalonnage ouvert depuis l'application -------------------
+    def open_calibration_studio(self) -> None:
+        """Ouvre (ou ramène) le Studio d'étalonnage — bouton 🎙️ / « Ouvrir le studio ».
+
+        La dictée passe en veille pendant l'étalonnage (deux flux micro sur le
+        même device = la dictée écrirait ce que le Studio enregistre) et se
+        réveille automatiquement à la fermeture du Studio.
+        """
+        from phenix_voice.ui.calibration_studio import CalibrationStudioWindow
+
+        if self._studio_window is None:
+            self._studio_window = CalibrationStudioWindow(
+                on_close=self._on_studio_closed
+            )
+        studio = self._studio_window
+        if studio.isVisible():
+            studio.raise_()
+            studio.activateWindow()
+            return
+        # (Ré)ouverture : reprendre au premier prompt non enregistré
+        studio._load_prompt(studio._first_missing_index())
+        self._sleep_before_studio = not self.is_sleeping and not self.is_muted
+        if self._sleep_before_studio:
+            self.toggle_sleep("studio")
+        studio.show()
+        studio.raise_()
+        studio.activateWindow()
+        self.injection_logger.log_action("studio_opened")
+
+    def _on_studio_closed(self) -> None:
+        """Fermeture du Studio : réveiller la dictée si on l'avait endormie."""
+        self.injection_logger.log_action("studio_closed")
+        if self._sleep_before_studio:
+            self._sleep_before_studio = False
+            if self.is_sleeping:
+                self.toggle_sleep("studio_closed")
 
     def open_correction_for_last(self) -> None:
         """Ouvre le volet de correction sur le dernier segment dicté."""
@@ -587,6 +629,7 @@ class PhenixVoiceController:
                 + "• <b>« Phénix repos »</b> : mettre en veille vocale (sans conflit avec Dragon)<br>"
                 "• <b>« Couper Phénix »</b> / <b>« Éteindre Phénix »</b> : couper totalement le micro<br>"
                 "• <b>« Corriger ça »</b> : ouvrir la fenêtre de correction (jusqu'à 9 alternatives + édition manuelle) du dernier souffle<br>"
+                "• <b>« Ouvrir le studio »</b> ou bouton <b>[🎙️ Studio]</b> : ouvrir le Studio d'étalonnage (corpus, mots OTAN, ré-enregistrement) — la dictée se met en veille pendant l'étalonnage et reprend à la fermeture<br>"
                 "• <b>« C'était une commande »</b> : si une commande a été écrite à tort comme du texte (ex. « Phénix repos »), efface le segment et ouvre la correction<br>"
                 "• <b>« Effacer ça »</b> : supprimer le dernier souffle<br>"
                 "• <b>« Annuler sans apprendre »</b> : effacer le dernier souffle SANS apprendre (bafouillage / fausse manip)<br>"
@@ -711,9 +754,13 @@ class PhenixVoiceController:
 
     def _stt_worker_loop(self) -> None:
         try:
+            # Raccourcis F8/F9 actifs DÈS le démarrage (le chargement du moteur
+            # prend plusieurs secondes — pendant ce délai, les touches doivent
+            # déjà être écoutées ; toggle_mute/toggle_sleep ignorent proprement
+            # tant que le moteur n'est pas prêt).
+            self.input_monitor.start()
             self.engine = WhisperDirectMLEngine(repo_id=self.model_repo)
             self.injection_logger.log_action("engine_ready", model_repo=self.model_repo)
-            self.input_monitor.start()
             self.capture.start()
             self.injection_logger.log_action("audio_pipeline_started")
 
@@ -1032,6 +1079,18 @@ class PhenixVoiceController:
                     self.open_correction_for_last()
                     self.hud.set_state(MicState.LISTENING)
                     self.injection_logger.log_action("command_executed", intent=processed.intent.value, target_arg=processed.target_arg)
+                    self.injection_logger.clear_segment_context()
+                    continue
+
+                if processed.intent == VoiceIntentType.OPEN_STUDIO:
+                    # Signal → thread GUI (ouvrir une fenêtre depuis le thread STT
+                    # n'est pas sûr) ; la dictée se met en veille tout seul.
+                    self.hud.signals.studio_requested.emit()
+                    self.hud.set_transcript(
+                        "[Studio d'étalonnage ouvert — la dictée est en veille pendant l'étalonnage]",
+                        result.total_ms,
+                    )
+                    self.injection_logger.log_action("command_executed", intent=processed.intent.value)
                     self.injection_logger.clear_segment_context()
                     continue
 

@@ -11,6 +11,7 @@ commandes quotidiennes de dictée/ponctuation :
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -34,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from phenix_voice.audio.vad import CHUNK_SAMPLES, SileroVAD
+from phenix_voice.audio.vad import CHUNK_SAMPLES, BreathSegmenter, SileroVAD
 from phenix_voice.postprocess.rules import PhoneticRuleEngine
 from phenix_voice.stt.engine import WhisperDirectMLEngine
 
@@ -236,6 +237,7 @@ class CalibrationStudioWindow(QWidget):
         self,
         output_dir: str | Path = "user_data/calibration",
         sample_rate: int = 16000,
+        on_close: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self.output_dir = Path(output_dir)
@@ -243,12 +245,20 @@ class CalibrationStudioWindow(QWidget):
         self.samples_dir.mkdir(parents=True, exist_ok=True)
         self.manifest_path = self.output_dir / "manifest.json"
         self.sample_rate = sample_rate
+        self.on_close = on_close
 
         self.prompts = ENRICHED_PROMPTS
         self.current_index = 0
         self.recorded_entries: list[dict] = self._load_existing_manifest()
         self.rule_engine = PhoneticRuleEngine()
         self.vad = SileroVAD()
+        # Auto-fin de segment (accessibilité 16/11) : on arrête tout seul dès que
+        # la parole est terminée. En studio, aucune hésitation n'est attendue
+        # (choix utilisateur 17/11) -> pause courte de 800 ms ; garde-fou 60 s.
+        self._auto_segmenter = BreathSegmenter(
+            silence_pause_ms=800, min_speech_ms=224, max_segment_s=60.0
+        )
+        self._auto_stop_requested = False
         self.stt_engine: WhisperDirectMLEngine | None = None
 
         self._is_recording = False
@@ -600,7 +610,20 @@ class CalibrationStudioWindow(QWidget):
         if chunk_peak > self._live_peak:
             self._live_peak = chunk_peak
 
+        # Auto-fin de segment : la fin de la parole est détectée par le VAD ici
+        # (thread audio) ; l'arrêt réel est fait dans `_update_meter` (thread GUI).
+        for start in range(0, len(mono) - CHUNK_SAMPLES + 1, CHUNK_SAMPLES):
+            if self._auto_segmenter.feed_chunk(mono[start : start + CHUNK_SAMPLES]) is not None:
+                self._auto_stop_requested = True
+                break
+
     def _update_meter(self) -> None:
+        if self._auto_stop_requested and self._is_recording:
+            # Fin de parole détectée automatiquement -> arrêt sans clic.
+            self._auto_stop_requested = False
+            self.peak_info_label.setText("⏹ Fin détectée — analyse en cours…")
+            self._stop_recording()
+            return
         if not self._is_recording:
             return
         peak = self._live_peak
@@ -632,6 +655,8 @@ class CalibrationStudioWindow(QWidget):
             self._recorded_chunks.clear()
             self._live_peak = 0.0
             self._is_recording = True
+            self._auto_stop_requested = False
+            self._auto_segmenter.reset()
             self._stop_playback()
             self.play_btn.setEnabled(False)
             self.validation_frame.setVisible(False)
@@ -645,43 +670,48 @@ class CalibrationStudioWindow(QWidget):
             )
             self._stream.start()
             self.record_btn.setText(
-                "⏹️ Parlez maintenant... Puis cliquez ici pour ARRÊTER"
+                "🎙️ Parlez… l'arrêt est AUTOMATIQUE après la fin de votre phrase"
             )
             self.record_btn.setStyleSheet(
                 "background-color: #2563eb; border-color: #3b82f6; font-size: 16px;"
             )
         else:
-            self._is_recording = False
-            if self._stream is not None:
-                self._stream.stop()
-                self._stream.close()
-                self._stream = None
+            self._stop_recording()
 
-            if not self._recorded_chunks:
-                return
-            full_audio = np.concatenate(self._recorded_chunks, axis=0)
-            self._current_audio = self._trim_silence(full_audio)
-            dur = len(self._current_audio) / self.sample_rate
-            max_amp = float(np.max(np.abs(self._current_audio)))
-            self.peak_info_label.setText(f"Durée : {dur:.2f}s | Pic : {max_amp:.4f}")
+    def _stop_recording(self) -> None:
+        """Arrête la capture (clic ou fin de parole automatique) et analyse l'audio."""
+        self._is_recording = False
+        self._auto_stop_requested = False
+        if self._stream is not None:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
 
-            # Transcription immédiate sur le GPU pour montrer ce que Whisper entend
-            if self.stt_engine is not None:
-                self.heard_label.setText("🟣 Analyse GPU en cours...")
-                QApplication.processEvents()
-                res = self.stt_engine.transcribe(self._current_audio)
-                self._current_heard_text = res.text
-                self._current_alts = res.alternatives
-                target_txt = self.target_edit.text().strip()
-                self.heard_label.setText(
-                    f"Entendu par Whisper ({res.total_ms:.0f} ms) : « {res.text} »  ➔  Sera associé à : « {target_txt} »"
-                )
+        if not self._recorded_chunks:
+            return
+        full_audio = np.concatenate(self._recorded_chunks, axis=0)
+        self._current_audio = self._trim_silence(full_audio)
+        dur = len(self._current_audio) / self.sample_rate
+        max_amp = float(np.max(np.abs(self._current_audio)))
+        self.peak_info_label.setText(f"Durée : {dur:.2f}s | Pic : {max_amp:.4f}")
 
-            self.record_btn.setEnabled(False)
-            self.record_btn.setText("Enregistrement analysé — Validez ci-dessous :")
-            self.record_btn.setStyleSheet("background-color: #334155;")
-            self.play_btn.setEnabled(True)
-            self.validation_frame.setVisible(True)
+        # Transcription immédiate sur le GPU pour montrer ce que Whisper entend
+        if self.stt_engine is not None:
+            self.heard_label.setText("🟣 Analyse GPU en cours...")
+            QApplication.processEvents()
+            res = self.stt_engine.transcribe(self._current_audio)
+            self._current_heard_text = res.text
+            self._current_alts = res.alternatives
+            target_txt = self.target_edit.text().strip()
+            self.heard_label.setText(
+                f"Entendu par Whisper ({res.total_ms:.0f} ms) : « {res.text} »  ➔  Sera associé à : « {target_txt} »"
+            )
+
+        self.record_btn.setEnabled(False)
+        self.record_btn.setText("Enregistrement analysé — Validez ci-dessous :")
+        self.record_btn.setStyleSheet("background-color: #334155;")
+        self.play_btn.setEnabled(True)
+        self.validation_frame.setVisible(True)
 
     def _play_current_audio(self) -> None:
         """Réécoute l'enregistrement en cours pour trancher : valider ou rejeter."""
@@ -778,6 +808,16 @@ class CalibrationStudioWindow(QWidget):
         """Démarre l'enregistrement sans clic (après validation ou reprise)."""
         if not self._is_recording and self._current_audio is None:
             self._toggle_recording()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (API Qt)
+        """Fermeture (✕, « Terminer » ou fin de liste) -> callback (réveil dictée)."""
+        self._stop_playback()
+        if self.on_close is not None:
+            try:
+                self.on_close()
+            except Exception:
+                pass
+        super().closeEvent(event)
 
 
 def main() -> None:
