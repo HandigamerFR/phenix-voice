@@ -1,0 +1,432 @@
+{"audio": "lora_segments/cmd_au_repos.wav", "text": "Au repos", "id": "cmd_au_repos", "speech_ratio": 0.821}
+{"audio": "lora_segments/cmd_choisir_deux.wav", "text": "Choisir deux", "id": "cmd_choisir_deux", "speech_ratio": 0.858}
+{"audio": "lora_segments/cmd_choisir_un.wav", "text": "Choisir un", "id": "cmd_choisir_un", "speech_ratio": 0.741}
+{"audio": "lora_segments/cmd_corriger_ca.wav", "text": "Corriger ça", "id": "cmd_corriger_ca", "speech_ratio": 0.869}
+{"audio": "lora_segments/cmd_couper_phenix.wav", "text": "Couper Phénix", "id": "cmd_couper_phenix", "speech_ratio": 0.882}
+{"audio": "lora_segments/cmd_ecoute.wav", "text": "Écoute", "id": "cmd_ecoute", "speech_ratio": 0.683}
+{"audio": "lora_segments/cmd_effacer_ca.wav", "text": "Effacer ça", "id": "cmd_effacer_ca", "speech_ratio": 0.865}
+{"audio": "lora_segments/cmd_oups.wav", "text": "Annuler sans apprendre", "id": "cmd_oups", "speech_ratio": 0.679}
+{"audio": "lora_segments/cmd_phenix_ecoute.wav", "text": "Phénix écoute", "id": "cmd_phenix_ecoute", "speech_ratio": 0.868}
+{"audio": "lora_segments/cmd_phenix_repos.wav", "text": "Phénix repos", "id": "cmd_phenix_repos", "speech_ratio": 0.879}
+{"audio": "lora_segments/cmd_presser_entree.wav", "text": "Presser Entrée", "id": "cmd_presser_entree", "speech_ratio": 0.883}
+{"audio": "lora_segments/corpus_01.wav", "text": "Le renard brun saute près du vieux pont.", "id": "corpus_01", "speech_ratio": 0.938}
+{"audio": "lora_segments/corpus_02.wav", "text": "J'ai écrit une lettre à ma sœur ce matin.", "id": "corpus_02", "speech_ratio": 0.935}
+{"audio": "lora_segments/corpus_03.wav", "text": "Les jeunes gens chantent une chanson joyeuse.", "id": "corpus_03", "speech_ratio": 0.944}
+{"audio": "lora_segments/corpus_04.wav", "text": "Mon frère achète des cerises très sucrées.", "id": "corpus_04", "speech_ratio": 0.938}
+{"audio": "lora_segments/corpus_05.wav", "text": "Pourquoi les ouvriers réparent-ils la toiture ?", "id": "corpus_05", "speech_ratio": 0.947}
+{"audio": "lora_segments/corpus_06.wav", "text": "Une île calme au milieu de la rivière.", "id": "corpus_06", "speech_ratio": 0.944}
+{"audio": "lora_segments/corpus_07.wav", "text": "Le bûcheron débite le bois sous la pluie.", "id": "corpus_07", "speech_ratio": 0.878}
+{"audio": "lora_segments/corpus_08.wav", "text": "Ta sœur a mangé des champignons au jardin.", "id": "corpus_08", "speech_ratio": 0.944}
+{"audio": "lora_segments/corpus_09.wav", "text": "Zoé a pris le bus jaune pour aller au cirque.", "id": "corpus_09", "speech_ratio": 0.928}
+{"audio": "lora_segments/corpus_10.wav", "text": "Vingt-cinq soldats chargent leurs sacs près du port.", "id": "corpus_10", "speech_ratio": 0.839}
+{"audio": "lora_segments/corpus_11.wav", "text": "Le docteur examine gentiment le petit oiseau.", "id": "corpus_11", "speech_ratio": 0.948}
+{"audio": "lora_segments/corpus_12.wav", "text": "Écoutez la musique douce du violon ce soir.", "id": "corpus_12", "speech_ratio": 0.943}
+{"audio": "lora_segments/nato_alpha.wav", "text": "Alpha", "id": "nato_alpha", "speech_ratio": 0.808}
+{"audio": "lora_segments/nato_bravo.wav", "text": "Bravo", "id": "nato_bravo", "speech_ratio": 0.756}
+{"audio": "lora_segments/nato_charlie.wav", "text": "Charlie", "id": "nato_charlie", "speech_ratio": 0.798}
+{"audio": "lora_segments/nato_delta.wav", "text": "Delta", "id": "nato_delta", "speech_ratio": 0.796}
+{"audio": "lora_segments/nato_echo.wav", "text": "Echo", "id": "nato_echo", "speech_ratio": 0.762}
+{"audio": "lora_segments/nato_foxtrot.wav", "text": "Foxtrot", "id": "nato_foxtrot", "speech_ratio": 0.773}
+{"audio": "lora_segments/nato_golf.wav", "text": "Golf", "id": "nato_golf", "speech_ratio": 0.756}
+{"audio": "lora_segments/nato_hotel.wav", "text": "Hotel", "id": "nato_hotel", "speech_ratio": 0.773}
+{"audio": "lora_segments/nato_india.wav", "text": "India", "id": "nato_india", "speech_ratio": 0.77}
+{"audio": "lora_segments/nato_juliett.wav", "text": "Juliett", "id": "nato_juliett", "speech_ratio": 0.77}
+{"audio": "lora_segments/nato_kilo.wav", "text": "Kilo", "id": "nato_kilo", "speech_ratio": 0.726}
+{"audio": "lora_segments/nato_lima.wav", "text": "Lima", "id": "nato_lima", "speech_ratio": 0.794}
+{"audio": "lora_segments/nato_mike.wav", "text": "Mike", "id": "nato_mike", "speech_ratio": 0.747}
+{"audio": "lora_segments/nato_november.wav", "text": "November", "id": "nato_november", "speech_ratio": 0.798}
+{"audio": "lora_segments/nato_oscar.wav", "text": "Oscar", "id": "nato_oscar", "speech_ratio": 0.747}
+{"audio": "lora_segments/nato_papa.wav", "text": "Papa", "id": "nato_papa", "speech_ratio": 0.787}
+{"audio": "lora_segments/nato_quebec.wav", "text": "Quebec", "id": "nato_quebec", "speech_ratio": 0.778}
+{"audio": "lora_segments/nato_romeo.wav", "text": "Romeo", "id": "nato_romeo", "speech_ratio": 0.85}
+{"audio": "lora_segments/nato_sierra.wav", "text": "Sierra", "id": "nato_sierra", "speech_ratio": 0.836}
+{"audio": "lora_segments/nato_tango.wav", "text": "Tango", "id": "nato_tango", "speech_ratio": 0.775}
+{"audio": "lora_segments/nato_uniform.wav", "text": "Uniform", "id": "nato_uniform", "speech_ratio": 0.82}
+{"audio": "lora_segments/nato_victor.wav", "text": "Victor", "id": "nato_victor", "speech_ratio": 0.82}
+{"audio": "lora_segments/nato_whiskey.wav", "text": "Whiskey", "id": "nato_whiskey", "speech_ratio": 0.808}
+{"audio": "lora_segments/nato_xray.wav", "text": "X-Ray", "id": "nato_xray", "speech_ratio": 0.818}
+{"audio": "lora_segments/nato_yankee.wav", "text": "Yankee", "id": "nato_yankee", "speech_ratio": 0.806}
+{"audio": "lora_segments/nato_zulu.wav", "text": "Zulu", "id": "nato_zulu", "speech_ratio": 0.697}
+{"audio": "lora_segments/phrase_1.wav", "text": "Bonjour, comment ça va aujourd'hui ?", "id": "phrase_1", "speech_ratio": 0.747}
+{"audio": "lora_segments/phrase_2.wav", "text": "Je teste la reconnaissance vocale adaptée point à la ligne", "id": "phrase_2", "speech_ratio": 0.953}
+{"audio": "lora_segments/punct_interrogation.wav", "text": "Point d'interrogation", "id": "punct_interrogation", "speech_ratio": 0.886}
+{"audio": "lora_segments/punct_nouveau_para.wav", "text": "Nouveau paragraphe", "id": "punct_nouveau_para", "speech_ratio": 0.871}
+{"audio": "lora_segments/punct_point_ligne.wav", "text": "Point à la ligne", "id": "punct_point_ligne", "speech_ratio": 0.868}
+{"audio": "lora_segments/utt0001.wav", "text": "Le soleil se lève derrière les collines.", "id": "utt0001", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0002.wav", "text": "J'ouvre la fenêtre pour laisser entrer l'air frais.", "id": "utt0002", "speech_ratio": 0.954}
+{"audio": "lora_segments/utt0003.wav", "text": "Une tasse de café fume sur la table.", "id": "utt0003", "speech_ratio": 0.922}
+{"audio": "lora_segments/utt0004.wav", "text": "Je cherche mes lunettes, elles sont sur le canapé.", "id": "utt0004", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0005.wav", "text": "La radio annonce une belle journée ensoleillée.", "id": "utt0005", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0006.wav", "text": "Mon frère prend le bus vers huit heures.", "id": "utt0006", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0007.wav", "text": "La porte du garage grince toujours le matin.", "id": "utt0007", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0008.wav", "text": "Nous achetons du pain chaud chez le boulanger.", "id": "utt0008", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0009.wav", "text": "Les voisins rangent leur voiture devant la maison.", "id": "utt0009", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0010.wav", "text": "Je remplis la bouilloire pour le thé.", "id": "utt0010", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0011.wav", "text": "Le chat dort au milieu du couloir.", "id": "utt0011", "speech_ratio": 0.936}
+{"audio": "lora_segments/utt0012.wav", "text": "Ma sœur écrit un message à notre cousin.", "id": "utt0012", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0013.wav", "text": "Le jardinier taille les roses derrière le haut mur.", "id": "utt0013", "speech_ratio": 0.954}
+{"audio": "lora_segments/utt0014.wav", "text": "Un oiseau chante sur le fil électrique.", "id": "utt0014", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0015.wav", "text": "J'oublie parfois mon parapluie dans l'entrée.", "id": "utt0015", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0016.wav", "text": "Les enfants déboulent dans la cour de l'école.", "id": "utt0016", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0017.wav", "text": "Le réveil sonne deux fois avant de s'arrêter.", "id": "utt0017", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0018.wav", "text": "Je prépare un sandwich au fromage et aux tomates.", "id": "utt0018", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0019.wav", "text": "La lampe du bureau clignote doucement.", "id": "utt0019", "speech_ratio": 0.856}
+{"audio": "lora_segments/utt0020.wav", "text": "La recette demande du beurre, des œufs et un peu de sel.", "id": "utt0020", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0021.wav", "text": "Fais chauffer l'huile dans la grande poêle.", "id": "utt0021", "speech_ratio": 0.884}
+{"audio": "lora_segments/utt0022.wav", "text": "Il épluche les carottes avec un couteau bien aiguisé.", "id": "utt0022", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0023.wav", "text": "La soupe mijote depuis une demi-heure.", "id": "utt0023", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0024.wav", "text": "J'ai coupé le gâteau en huit parts égales.", "id": "utt0024", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0025.wav", "text": "Le fromage de chèvre est très fort au goût.", "id": "utt0025", "speech_ratio": 0.886}
+{"audio": "lora_segments/utt0026.wav", "text": "Nous gardons le pain rassis pour faire des miettes.", "id": "utt0026", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0027.wav", "text": "Une odeur de viande grillée remplit la cuisine.", "id": "utt0027", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0028.wav", "text": "Passe-moi le saladier et la fourchette en bois.", "id": "utt0028", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0029.wav", "text": "Le vinaigre rend la sauce un peu trop acide.", "id": "utt0029", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0030.wav", "text": "Tu peux écraser l'ail avec la petite presse.", "id": "utt0030", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0031.wav", "text": "La tarte aux pommes refroidit sur la grille.", "id": "utt0031", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0032.wav", "text": "Nous mettons du poivre et du sel sur les tomates.", "id": "utt0032", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0033.wav", "text": "Le boucher découpe le jambon derrière la vitrine.", "id": "utt0033", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0034.wav", "text": "Le renard brun saute près du vieux pont.", "id": "utt0034", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0035.wav", "text": "J'ai écrit une lettre à ma sœur ce matin.", "id": "utt0035", "speech_ratio": 0.735}
+{"audio": "lora_segments/utt0037.wav", "text": "Mon frère achète des cerises très sucrées.", "id": "utt0037", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0038.wav", "text": "Pourquoi les ouvriers réparent-ils la toiture ?", "id": "utt0038", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0039.wav", "text": "Une île calme au milieu de la rivière.", "id": "utt0039", "speech_ratio": 0.929}
+{"audio": "lora_segments/utt0040.wav", "text": "Le bûcheron débite le bois sous la pluie.", "id": "utt0040", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0041.wav", "text": "Ta sœur a mangé des champignons au jardin.", "id": "utt0041", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0042.wav", "text": "Zoé a pris le bus jaune pour aller au cirque.", "id": "utt0042", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0043.wav", "text": "Vingt-cinq soldats chargent leurs sacs près du port.", "id": "utt0043", "speech_ratio": 0.93}
+{"audio": "lora_segments/utt0044.wav", "text": "Le docteur examine gentiment le petit oiseau.", "id": "utt0044", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0045.wav", "text": "Écoutez la musique douce du violon ce soir.", "id": "utt0045", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0046.wav", "text": "Le vent d'automne tombe doucement sur les champs.", "id": "utt0046", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0047.wav", "text": "Les feuilles mortes flottent dans la rivière.", "id": "utt0047", "speech_ratio": 0.93}
+{"audio": "lora_segments/utt0048.wav", "text": "Un brouillard épais couvre la vallée au petit matin.", "id": "utt0048", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0049.wav", "text": "Les grenouilles coassent près de l'étang.", "id": "utt0049", "speech_ratio": 0.887}
+{"audio": "lora_segments/utt0050.wav", "text": "Une abeille butine les fleurs du jardin.", "id": "utt0050", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0051.wav", "text": "Les étoiles brillent clairement dans la nuit froide.", "id": "utt0051", "speech_ratio": 0.889}
+{"audio": "lora_segments/utt0052.wav", "text": "Le torrent gronde entre les gros rochers.", "id": "utt0052", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0053.wav", "text": "Les branches du saule tremblent au vent.", "id": "utt0053", "speech_ratio": 0.928}
+{"audio": "lora_segments/utt0054.wav", "text": "Un cerf boit au bord du lac.", "id": "utt0054", "speech_ratio": 0.776}
+{"audio": "lora_segments/utt0055.wav", "text": "La neige couvre les toits et les sapins.", "id": "utt0055", "speech_ratio": 0.933}
+{"audio": "lora_segments/utt0056.wav", "text": "Les huîtres sont fraîches sur le marché.", "id": "utt0056", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0057.wav", "text": "Le chêne ancien abrite une nichée d'oiseaux.", "id": "utt0057", "speech_ratio": 0.949}
+{"audio": "lora_segments/utt0058.wav", "text": "Une libellule vole au-dessus de l'étang.", "id": "utt0058", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0059.wav", "text": "Les montagnes bleues s'effacent derrière la brume.", "id": "utt0059", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0060.wav", "text": "Le paysage change avec chaque saison.", "id": "utt0060", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0061.wav", "text": "Le métro bondé traverse la ville sous la terre.", "id": "utt0061", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0062.wav", "text": "Je tourne à droite au prochain carrefour.", "id": "utt0062", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0063.wav", "text": "Les piétons attendent le feu vert au passage.", "id": "utt0063", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0064.wav", "text": "Le train arrive en retard à cause du brouillard.", "id": "utt0064", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0065.wav", "text": "Une ambulance traverse le centre-ville en klaxonnant.", "id": "utt0065", "speech_ratio": 0.914}
+{"audio": "lora_segments/utt0066.wav", "text": "Nous cherchons un parking près de la gare.", "id": "utt0066", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0067.wav", "text": "La bicyclette roule vite sur la piste cyclable.", "id": "utt0067", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0068.wav", "text": "Le taxi s'arrête devant le grand hôtel.", "id": "utt0068", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0069.wav", "text": "J'ai perdu le ticket de mon wagon.", "id": "utt0069", "speech_ratio": 0.925}
+{"audio": "lora_segments/utt0070.wav", "text": "La route serpente entre les collines boisées.", "id": "utt0070", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0071.wav", "text": "Un camion chargé de sable roule lentement.", "id": "utt0071", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0072.wav", "text": "Le bus s'éloigne pendant que nous courons.", "id": "utt0072", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0073.wav", "text": "Le chauffeur répare le pneu à l'aire d'autoroute.", "id": "utt0073", "speech_ratio": 0.852}
+{"audio": "lora_segments/utt0074.wav", "text": "Nous attendons le car à l'arrêt sous la pluie.", "id": "utt0074", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0075.wav", "text": "Le pont de pierre enjambe la rivière rapide.", "id": "utt0075", "speech_ratio": 0.86}
+{"audio": "lora_segments/utt0076.wav", "text": "Les passagers descendent du train en silence.", "id": "utt0076", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0077.wav", "text": "Le médecin examine ma gorge avec une petite lampe.", "id": "utt0077", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0078.wav", "text": "Ma voix est un peu rauque depuis hier.", "id": "utt0078", "speech_ratio": 0.936}
+{"audio": "lora_segments/utt0079.wav", "text": "L'orthophoniste travaille avec moi deux fois par semaine.", "id": "utt0079", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0080.wav", "text": "Je fais des exercices de respiration chaque matin.", "id": "utt0080", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0081.wav", "text": "Mon dos me fait mal après avoir porté les courses.", "id": "utt0081", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0082.wav", "text": "L'infirmière prend ma tension avant l'examen.", "id": "utt0082", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0083.wav", "text": "Il tousse souvent quand l'air est trop sec.", "id": "utt0083", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0084.wav", "text": "J'avale un verre d'eau avec mes médicaments.", "id": "utt0084", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0085.wav", "text": "Le kinésithérapeute masse l'épaule droite.", "id": "utt0085", "speech_ratio": 0.907}
+{"audio": "lora_segments/utt0086.wav", "text": "Mon genou craque quand je monte l'escalier.", "id": "utt0086", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0087.wav", "text": "La fièvre est tombée pendant la nuit.", "id": "utt0087", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0088.wav", "text": "Je dois reprendre mes forces après l'opération.", "id": "utt0088", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0089.wav", "text": "Les yeux me piquent à cause du pollen.", "id": "utt0089", "speech_ratio": 0.936}
+{"audio": "lora_segments/utt0090.wav", "text": "Le dentiste vérifie mes dents et mes gencives.", "id": "utt0090", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0091.wav", "text": "Il se sent fatigué après cette longue journée.", "id": "utt0091", "speech_ratio": 0.871}
+{"audio": "lora_segments/utt0092.wav", "text": "Bois assez d'eau pour garder l'énergie.", "id": "utt0092", "speech_ratio": 0.933}
+{"audio": "lora_segments/utt0093.wav", "text": "Ma grand-mère habite dans un village du sud.", "id": "utt0093", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0094.wav", "text": "Nous fêtons l'anniversaire de mon cousin samedi.", "id": "utt0094", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0095.wav", "text": "Ton ami est très gentil avec tout le monde.", "id": "utt0095", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0096.wav", "text": "Je suis fier du travail accompli par l'équipe.", "id": "utt0096", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0097.wav", "text": "Il pleure souvent devant les films tristes.", "id": "utt0097", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0098.wav", "text": "La surprise de ta mère était adorable.", "id": "utt0098", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0099.wav", "text": "Nous discutons longuement autour de la grande table.", "id": "utt0099", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0100.wav", "text": "Mon voisin répare toujours mes outils.", "id": "utt0100", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0101.wav", "text": "Tu me manques depuis ton départ à l'étranger.", "id": "utt0101", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0102.wav", "text": "Le bébé sourit en voyant son doudou.", "id": "utt0102", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0103.wav", "text": "Elle chuchote des histoires à ses enfants.", "id": "utt0103", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0104.wav", "text": "Nous invitons les cousins pour le réveillon.", "id": "utt0104", "speech_ratio": 0.933}
+{"audio": "lora_segments/utt0105.wav", "text": "Je pense souvent à nos vieilles vacances.", "id": "utt0105", "speech_ratio": 0.928}
+{"audio": "lora_segments/utt0106.wav", "text": "Les voisins ont organisé une fête dans la rue.", "id": "utt0106", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0107.wav", "text": "Ton sourire rend tout plus simple.", "id": "utt0107", "speech_ratio": 0.93}
+{"audio": "lora_segments/utt0108.wav", "text": "J'écris un long rapport sur mon ordinateur.", "id": "utt0108", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0109.wav", "text": "La batterie du portable est presque vide.", "id": "utt0109", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0110.wav", "text": "Clique sur l'icône pour ouvrir le fichier.", "id": "utt0110", "speech_ratio": 0.928}
+{"audio": "lora_segments/utt0111.wav", "text": "Le fichier est trop lourd pour être envoyé.", "id": "utt0111", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0112.wav", "text": "Mon collègue corrige les fautes avant l'envoi.", "id": "utt0112", "speech_ratio": 0.931}
+{"audio": "lora_segments/utt0113.wav", "text": "Un écran bleu s'affiche soudain sur le bureau.", "id": "utt0113", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0114.wav", "text": "Sauvegarde tes documents sur le disque externe.", "id": "utt0114", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0115.wav", "text": "L'imprimante grince et refuse d'avancer.", "id": "utt0115", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0116.wav", "text": "J'attends la validation du client avant de partir.", "id": "utt0116", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0117.wav", "text": "Le message contient une pièce jointe énorme.", "id": "utt0117", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0118.wav", "text": "Nous organisons une réunion mardi matin.", "id": "utt0118", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0119.wav", "text": "Le projet avance malgré les problèmes techniques.", "id": "utt0119", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0120.wav", "text": "Il corrige le code pendant toute la nuit.", "id": "utt0120", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0121.wav", "text": "Cette application consomme trop de mémoire vive.", "id": "utt0121", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0122.wav", "text": "Le tableau affiche les résultats du mois.", "id": "utt0122", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0123.wav", "text": "Comment se porte ta mère depuis son opération ?", "id": "utt0123", "speech_ratio": 0.949}
+{"audio": "lora_segments/utt0124.wav", "text": "Est-ce que tu viens avec nous ce soir ?", "id": "utt0124", "speech_ratio": 0.921}
+{"audio": "lora_segments/utt0125.wav", "text": "Où ai-je mis mes clés de voiture ?", "id": "utt0125", "speech_ratio": 0.919}
+{"audio": "lora_segments/utt0126.wav", "text": "Comment se nomme ce village sur la carte ?", "id": "utt0126", "speech_ratio": 0.933}
+{"audio": "lora_segments/utt0127.wav", "text": "As-tu besoin de quelque chose avant de dormir ?", "id": "utt0127", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0128.wav", "text": "Quand part le prochain train pour Lyon ?", "id": "utt0128", "speech_ratio": 0.931}
+{"audio": "lora_segments/utt0129.wav", "text": "Qui veut goûter ce gâteau aux fruits ?", "id": "utt0129", "speech_ratio": 0.926}
+{"audio": "lora_segments/utt0130.wav", "text": "Combien de temps durera la réunion de demain ?", "id": "utt0130", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0131.wav", "text": "Peux-tu répéter cette phrase un peu plus lentement ?", "id": "utt0131", "speech_ratio": 0.898}
+{"audio": "lora_segments/utt0132.wav", "text": "À quelle heure ouvre la bibliothèque ?", "id": "utt0132", "speech_ratio": 0.924}
+{"audio": "lora_segments/utt0133.wav", "text": "Quelqu'un a-t-il vu mon parapluie jaune ?", "id": "utt0133", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0134.wav", "text": "Pourrais-tu m'aider à porter ces bagages ?", "id": "utt0134", "speech_ratio": 0.931}
+{"audio": "lora_segments/utt0135.wav", "text": "Est-il possible de changer la date du rendez-vous ?", "id": "utt0135", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0136.wav", "text": "Où se trouve la prochaine station-service ?", "id": "utt0136", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0137.wav", "text": "Sais-tu pourquoi le magasin est fermé aujourd'hui ?", "id": "utt0137", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0138.wav", "text": "Veux-tu du thé ou un verre d'eau ?", "id": "utt0138", "speech_ratio": 0.921}
+{"audio": "lora_segments/utt0139.wav", "text": "D'abord nous faisons les courses, ensuite nous rentrons.", "id": "utt0139", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0140.wav", "text": "Il est parti parce qu'il devait prendre le train.", "id": "utt0140", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0141.wav", "text": "C'est difficile, mais le résultat vaut vraiment le coup.", "id": "utt0141", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0142.wav", "text": "Bien que la pluie tombe, nous sortons nous promener.", "id": "utt0142", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0143.wav", "text": "Tandis que je prépare le dîner, tu peux t'asseoir.", "id": "utt0143", "speech_ratio": 0.905}
+{"audio": "lora_segments/utt0144.wav", "text": "Enfin, nous terminons par un café dans le jardin.", "id": "utt0144", "speech_ratio": 0.928}
+{"audio": "lora_segments/utt0145.wav", "text": "Tu peux choisir le bleu, le rouge ou le vert.", "id": "utt0145", "speech_ratio": 0.916}
+{"audio": "lora_segments/utt0146.wav", "text": "Il y a du pain, du fromage, des fruits et du jus.", "id": "utt0146", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0147.wav", "text": "Premièrement, vérifie le micro. Deuxièmement, lance l'enregistrement.", "id": "utt0147", "speech_ratio": 0.959}
+{"audio": "lora_segments/utt0148.wav", "text": "Non seulement il est ponctuel, mais il est aussi minutieux.", "id": "utt0148", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0149.wav", "text": "Par conséquent, nous devons avancer plus vite.", "id": "utt0149", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0150.wav", "text": "En revanche, la version précédente fonctionnait parfaitement.", "id": "utt0150", "speech_ratio": 0.857}
+{"audio": "lora_segments/utt0151.wav", "text": "Quoiqu'il soit tard, nous continuons la discussion.", "id": "utt0151", "speech_ratio": 0.882}
+{"audio": "lora_segments/utt0152.wav", "text": "Malgré le froid, les enfants jouent dehors.", "id": "utt0152", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0153.wav", "text": "Ainsi, chacun peut lire le texte à son rythme.", "id": "utt0153", "speech_ratio": 0.912}
+{"audio": "lora_segments/utt0154.wav", "text": "Au contraire, cette solution semble plus simple.", "id": "utt0154", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0155.wav", "text": "Nous sommes le treize novembre.", "id": "utt0155", "speech_ratio": 0.912}
+{"audio": "lora_segments/utt0156.wav", "text": "Il a acheté trois kilos de pommes et deux poires.", "id": "utt0156", "speech_ratio": 0.885}
+{"audio": "lora_segments/utt0158.wav", "text": "Six ouvriers travaillent sur le chantier ce matin.", "id": "utt0158", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0159.wav", "text": "Le train part à quinze heures trente.", "id": "utt0159", "speech_ratio": 0.921}
+{"audio": "lora_segments/utt0160.wav", "text": "J'ai téléphoné quatre fois sans succès.", "id": "utt0160", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0162.wav", "text": "Nous habitons au numéro vingt et un de la rue des Lilas.", "id": "utt0162", "speech_ratio": 0.893}
+{"audio": "lora_segments/utt0164.wav", "text": "Dix-neuf visiteurs sont entrés dans le musée.", "id": "utt0164", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0165.wav", "text": "Sept personnes attendent déjà à l'accueil.", "id": "utt0165", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0166.wav", "text": "Le thermomètre indique dix-huit degrés.", "id": "utt0166", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0168.wav", "text": "Le huit du mois, nous partons en vacances.", "id": "utt0168", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0169.wav", "text": "Le café est prêt.", "id": "utt0169", "speech_ratio": 0.885}
+{"audio": "lora_segments/utt0170.wav", "text": "Ferme la fenêtre, s'il te plaît.", "id": "utt0170", "speech_ratio": 0.913}
+{"audio": "lora_segments/utt0171.wav", "text": "Je t'écoute.", "id": "utt0171", "speech_ratio": 0.82}
+{"audio": "lora_segments/utt0172.wav", "text": "Ouvre le tiroir du bas.", "id": "utt0172", "speech_ratio": 0.889}
+{"audio": "lora_segments/utt0173.wav", "text": "Il fait très chaud aujourd'hui.", "id": "utt0173", "speech_ratio": 0.91}
+{"audio": "lora_segments/utt0174.wav", "text": "Répète lentement, je t'en prie.", "id": "utt0174", "speech_ratio": 0.926}
+{"audio": "lora_segments/utt0175.wav", "text": "Le chien dort près du radiateur.", "id": "utt0175", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0176.wav", "text": "Nous y sommes presque.", "id": "utt0176", "speech_ratio": 0.882}
+{"audio": "lora_segments/utt0177.wav", "text": "Prends ton parapluie.", "id": "utt0177", "speech_ratio": 0.89}
+{"audio": "lora_segments/utt0178.wav", "text": "C'est exactement ça.", "id": "utt0178", "speech_ratio": 0.908}
+{"audio": "lora_segments/utt0179.wav", "text": "Laisse-moi finir cette phrase.", "id": "utt0179", "speech_ratio": 0.918}
+{"audio": "lora_segments/utt0180.wav", "text": "Tu as raison.", "id": "utt0180", "speech_ratio": 0.798}
+{"audio": "lora_segments/utt0181.wav", "text": "Il est déjà tard.", "id": "utt0181", "speech_ratio": 0.859}
+{"audio": "lora_segments/utt0182.wav", "text": "Mets la table pour le dîner.", "id": "utt0182", "speech_ratio": 0.912}
+{"audio": "lora_segments/utt0183.wav", "text": "J'ai besoin d'une pause.", "id": "utt0183", "speech_ratio": 0.89}
+{"audio": "lora_segments/utt0184.wav", "text": "Écoute bien la consigne.", "id": "utt0184", "speech_ratio": 0.908}
+{"audio": "lora_segments/utt0185.wav", "text": "Hier après-midi, nous avons visité le vieux château.", "id": "utt0185", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0186.wav", "text": "Pendant les vacances, la famille se réunit au bord de la mer.", "id": "utt0186", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0187.wav", "text": "Le boulanger sort du four une fournée de baguettes croustillantes.", "id": "utt0187", "speech_ratio": 0.957}
+{"audio": "lora_segments/utt0188.wav", "text": "Sur le marché, les marchands vendent des légumes frais et des fleurs.", "id": "utt0188", "speech_ratio": 0.961}
+{"audio": "lora_segments/utt0189.wav", "text": "L'orage a abattu deux arbres devant l'école cette nuit.", "id": "utt0189", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0190.wav", "text": "Le professeur explique la leçon avec beaucoup de patience.", "id": "utt0190", "speech_ratio": 0.956}
+{"audio": "lora_segments/utt0191.wav", "text": "Nous avons trouvé une vieille photo dans le grenier.", "id": "utt0191", "speech_ratio": 0.918}
+{"audio": "lora_segments/utt0193.wav", "text": "Après le dîner, tout le monde s'installe devant la télévision.", "id": "utt0193", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0194.wav", "text": "La petite fille raconte un conte à sa poupée.", "id": "utt0194", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0195.wav", "text": "Un livreur dépose un colis devant la porte.", "id": "utt0195", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0196.wav", "text": "Nous avons marché longtemps avant de trouver un banc.", "id": "utt0196", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0197.wav", "text": "Le jardin est plein de rosiers et de tilleuls.", "id": "utt0197", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0198.wav", "text": "Le facteur distribue le courrier dans la rue tranquille.", "id": "utt0198", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0199.wav", "text": "Quand la cloche sonne, les élèves sortent en courant.", "id": "utt0199", "speech_ratio": 0.915}
+{"audio": "lora_segments/utt0200.wav", "text": "Mon oncle cuisine souvent des plats du sud.", "id": "utt0200", "speech_ratio": 0.883}
+{"audio": "lora_segments/utt0201.wav", "text": "L'instructeur donne des instructions très claires.", "id": "utt0201", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0202.wav", "text": "Le stratège construit une stratégie prudente.", "id": "utt0202", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0203.wav", "text": "Cette brasserie produit une bière très recherchée.", "id": "utt0203", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0204.wav", "text": "Les ustensiles sont rangés dans le tiroir du bas.", "id": "utt0204", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0205.wav", "text": "Un extraordinaire spectacle se déroule sur la place.", "id": "utt0205", "speech_ratio": 0.92}
+{"audio": "lora_segments/utt0206.wav", "text": "Le pharmacien prépare une ordonnance complète.", "id": "utt0206", "speech_ratio": 0.949}
+{"audio": "lora_segments/utt0207.wav", "text": "Nous avons observé un bref silence après l'annonce.", "id": "utt0207", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0208.wav", "text": "L'architecte dessine une façade sobre et élégante.", "id": "utt0208", "speech_ratio": 0.956}
+{"audio": "lora_segments/utt0209.wav", "text": "Le gymnase est vaste et lumineux.", "id": "utt0209", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0210.wav", "text": "La circulaire annonce des travaux sur la route.", "id": "utt0210", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0211.wav", "text": "Un fragment de verre brillait sur le trottoir.", "id": "utt0211", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0212.wav", "text": "Le prince prononce un discours très court.", "id": "utt0212", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0213.wav", "text": "Le solstice arrive avec les jours plus courts.", "id": "utt0213", "speech_ratio": 0.955}
+{"audio": "lora_segments/utt0214.wav", "text": "L'astronome observe une étoile filante.", "id": "utt0214", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0215.wav", "text": "Le bûcheron plante un pieu près du buisson.", "id": "utt0215", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0216.wav", "text": "Le docteur tient un dossier très tendu.", "id": "utt0216", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0217.wav", "text": "Le clocher gronde quand le vent se lève.", "id": "utt0217", "speech_ratio": 0.905}
+{"audio": "lora_segments/utt0218.wav", "text": "Le vieux forgeron forge un fer à cheval.", "id": "utt0218", "speech_ratio": 0.93}
+{"audio": "lora_segments/utt0219.wav", "text": "Les amis organisent un séjour au bord de la mer.", "id": "utt0219", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0220.wav", "text": "Le chat saute sur le canapé.", "id": "utt0220", "speech_ratio": 0.9}
+{"audio": "lora_segments/utt0221.wav", "text": "Le juge achète un chapeau gris.", "id": "utt0221", "speech_ratio": 0.923}
+{"audio": "lora_segments/utt0222.wav", "text": "Les vingt pommes du panier sont encore fraîches.", "id": "utt0222", "speech_ratio": 0.93}
+{"audio": "lora_segments/utt0223.wav", "text": "Cet été, nous irons près de la mer.", "id": "utt0223", "speech_ratio": 0.928}
+{"audio": "lora_segments/utt0224.wav", "text": "Le gros collier tombe sur le sol.", "id": "utt0224", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0225.wav", "text": "Tu es fou de courir dans la rue.", "id": "utt0225", "speech_ratio": 0.921}
+{"audio": "lora_segments/utt0226.wav", "text": "Papa mange des pâtes au beurre.", "id": "utt0226", "speech_ratio": 0.906}
+{"audio": "lora_segments/utt0227.wav", "text": "Chacun de nous a son propre chemin.", "id": "utt0227", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0228.wav", "text": "Le parfum de la rose remplit la pièce.", "id": "utt0228", "speech_ratio": 0.917}
+{"audio": "lora_segments/utt0229.wav", "text": "Le loup gris rôde près de la bergerie.", "id": "utt0229", "speech_ratio": 0.92}
+{"audio": "lora_segments/utt0230.wav", "text": "Le dindon et le lapin dorment dans la grange.", "id": "utt0230", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0231.wav", "text": "Quatre chats noirs guettent la souris blanche.", "id": "utt0231", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0232.wav", "text": "La cloche et la glace résonnent ensemble.", "id": "utt0232", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0233.wav", "text": "Jeanne joue du piano avec ses doigts agiles.", "id": "utt0233", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0234.wav", "text": "Les filles et les garçons lisent dans la cour.", "id": "utt0234", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0235.wav", "text": "Le gymnaste répète ses sauts sur le tapis.", "id": "utt0235", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0236.wav", "text": "Nous aimons écouter la pluie tomber sur le toit.", "id": "utt0236", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0237.wav", "text": "La cuisine sent bon le citron et le thym.", "id": "utt0237", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0238.wav", "text": "Le facteur a laissé un mot dans la boîte.", "id": "utt0238", "speech_ratio": 0.936}
+{"audio": "lora_segments/utt0239.wav", "text": "Ils discutent de tout et de rien sous le porche.", "id": "utt0239", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0240.wav", "text": "Le voisinage se retrouve chaque dimanche au parc.", "id": "utt0240", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0241.wav", "text": "Ma cousine prépare un exposé pour sa classe.", "id": "utt0241", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0242.wav", "text": "La petite montagne domine la plaine ensoleillée.", "id": "utt0242", "speech_ratio": 0.906}
+{"audio": "lora_segments/utt0243.wav", "text": "Le guichet ferme dans dix minutes exactement.", "id": "utt0243", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0244.wav", "text": "Le hibou veille sur la ferme toute la nuit.", "id": "utt0244", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0245.wav", "text": "Les ramiers se posent sur le toit de la grange.", "id": "utt0245", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0246.wav", "text": "Leurs jumelles sont sur la table du salon.", "id": "utt0246", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0247.wav", "text": "La brise marine rafraîchit la terrasse.", "id": "utt0247", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0248.wav", "text": "Nous gardons toujours une lampe de poche à portée de main.", "id": "utt0248", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0249.wav", "text": "Le menu du jour est écrit à la craie.", "id": "utt0249", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0250.wav", "text": "La machine à laver vibre fort dans la buanderie.", "id": "utt0250", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0251.wav", "text": "Le facteur traverse le village à toute vitesse.", "id": "utt0251", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0252.wav", "text": "Un silence gêné suit la chute du vase.", "id": "utt0252", "speech_ratio": 0.931}
+{"audio": "lora_segments/utt0253.wav", "text": "Dans la campagne, les moutons broutent l'herbe au pied de la montagne.", "id": "utt0253", "speech_ratio": 0.961}
+{"audio": "lora_segments/utt0254.wav", "text": "Le champignon pousse près des fougères humides.", "id": "utt0254", "speech_ratio": 0.506}
+{"audio": "lora_segments/utt0255.wav", "text": "Un agneau gris saute dans la prairie.", "id": "utt0255", "speech_ratio": 0.926}
+{"audio": "lora_segments/utt0256.wav", "text": "La ligne d'horizon sépare le ciel de la mer.", "id": "utt0256", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0257.wav", "text": "Ce geste est simple, mais il est digne d'intérêt.", "id": "utt0257", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0258.wav", "text": "Le signal vert permet enfin de passer.", "id": "utt0258", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0259.wav", "text": "Son chignon noir ondule dans le vent.", "id": "utt0259", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0260.wav", "text": "Le mignon chaton dort dans le panier.", "id": "utt0260", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0261.wav", "text": "Il gagne toujours au jeu des cartes.", "id": "utt0261", "speech_ratio": 0.927}
+{"audio": "lora_segments/utt0262.wav", "text": "La montagne est couverte de sapins et de rochers.", "id": "utt0262", "speech_ratio": 0.953}
+{"audio": "lora_segments/utt0263.wav", "text": "Nous avons mangé des champignons à la crème.", "id": "utt0263", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0264.wav", "text": "La campagne est calme au crépuscule.", "id": "utt0264", "speech_ratio": 0.925}
+{"audio": "lora_segments/utt0265.wav", "text": "Deux amis se retrouvent chaque jeudi au café.", "id": "utt0265", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0266.wav", "text": "Le bleu marine va bien avec cette veste.", "id": "utt0266", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0267.wav", "text": "Ils jouent ensemble un jeu de société le jeudi.", "id": "utt0267", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0268.wav", "text": "La pieuvre se cache entre les rochers.", "id": "utt0268", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0269.wav", "text": "Un vœu secret accompagne chaque bougie soufflée.", "id": "utt0269", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0270.wav", "text": "Le meuble bas est en bois massif.", "id": "utt0270", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0271.wav", "text": "Il a peu de temps, mais il aide souvent.", "id": "utt0271", "speech_ratio": 0.93}
+{"audio": "lora_segments/utt0272.wav", "text": "Le beurre fondu nappe les légumes chauds.", "id": "utt0272", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0273.wav", "text": "Une fleur sauvage pousse au bord du chemin.", "id": "utt0273", "speech_ratio": 0.87}
+{"audio": "lora_segments/utt0274.wav", "text": "Leur maison est au bout de la ruelle.", "id": "utt0274", "speech_ratio": 0.925}
+{"audio": "lora_segments/utt0275.wav", "text": "La peur du vide disparaît avec l'habitude.", "id": "utt0275", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0276.wav", "text": "Mon cœur bat vite pendant l'examen.", "id": "utt0276", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0277.wav", "text": "Ta sœur prépare un gâteau aux noix.", "id": "utt0277", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0278.wav", "text": "Nous attendons depuis une heure près du portail.", "id": "utt0278", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0279.wav", "text": "La lueur de la lampe éclaire le couloir.", "id": "utt0279", "speech_ratio": 0.93}
+{"audio": "lora_segments/utt0280.wav", "text": "Neuf amis participent au repas du dimanche.", "id": "utt0280", "speech_ratio": 0.917}
+{"audio": "lora_segments/utt0281.wav", "text": "Les œufs brouillés sont prêts pour le petit-déjeuner.", "id": "utt0281", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0282.wav", "text": "Il fait nuit, la lune brille déjà.", "id": "utt0282", "speech_ratio": 0.933}
+{"audio": "lora_segments/utt0283.wav", "text": "Huit visiteurs attendent devant la billetterie.", "id": "utt0283", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0284.wav", "text": "Tu huiles les roues de la chaise roulante.", "id": "utt0284", "speech_ratio": 0.925}
+{"audio": "lora_segments/utt0285.wav", "text": "Les huîtres sont servies avec du citron.", "id": "utt0285", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0286.wav", "text": "Il fait nuit noire depuis vingt heures.", "id": "utt0286", "speech_ratio": 0.926}
+{"audio": "lora_segments/utt0287.wav", "text": "Les fruits du verger sont mûrs cette année.", "id": "utt0287", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0288.wav", "text": "Lui aussi prépare les bagages pour le voyage.", "id": "utt0288", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0289.wav", "text": "Le pain cuit dans le four du boulanger.", "id": "utt0289", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0290.wav", "text": "La lune se lève lentement derrière les toits.", "id": "utt0290", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0291.wav", "text": "Un bruit étrange sort de la chambre.", "id": "utt0291", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0292.wav", "text": "Elle essuie la vaisselle avec un torchon.", "id": "utt0292", "speech_ratio": 0.936}
+{"audio": "lora_segments/utt0293.wav", "text": "Vingt-cinq invités sont attendus pour le dîner.", "id": "utt0293", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0294.wav", "text": "Cinq minutes de pause suffisent pour reprendre des forces.", "id": "utt0294", "speech_ratio": 0.964}
+{"audio": "lora_segments/utt0295.wav", "text": "Le train de onze heures part du quai numéro trois.", "id": "utt0295", "speech_ratio": 0.814}
+{"audio": "lora_segments/utt0296.wav", "text": "Il boit un verre de vin blanc avant le repas.", "id": "utt0296", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0297.wav", "text": "Le train direct ne s'arrête pas en route.", "id": "utt0297", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0298.wav", "text": "Un train rapide traverse la plaine enneigée.", "id": "utt0298", "speech_ratio": 0.949}
+{"audio": "lora_segments/utt0299.wav", "text": "Il a besoin de repos après une semaine difficile.", "id": "utt0299", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0300.wav", "text": "Prends soin de toi pendant cette période chargée.", "id": "utt0300", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0301.wav", "text": "Mon bras droit me fait mal depuis trois jours.", "id": "utt0301", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0302.wav", "text": "Quand tu as le temps, appelle-moi pour prendre des nouvelles.", "id": "utt0302", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0303.wav", "text": "Est-ce que tu préfères le thé vert ou le café ?", "id": "utt0303", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0304.wav", "text": "Pourquoi as-tu choisi cette couleur pour le mur ?", "id": "utt0304", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0305.wav", "text": "Qui a laissé la porte de la cuisine ouverte ?", "id": "utt0305", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0306.wav", "text": "Combien de courses reste-t-il à faire avant ce soir ?", "id": "utt0306", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0307.wav", "text": "Peux-tu me dire où se trouve le cahier de texte ?", "id": "utt0307", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0308.wav", "text": "Nous faisons les courses le mardi et le samedi.", "id": "utt0308", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0309.wav", "text": "D'abord je lis le message, ensuite je réponds.", "id": "utt0309", "speech_ratio": 0.938}
+{"audio": "lora_segments/utt0310.wav", "text": "Il pleut beaucoup, alors nous restons à la maison.", "id": "utt0310", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0311.wav", "text": "Bien qu'il soit fatigué, il finit son travail.", "id": "utt0311", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0312.wav", "text": "Tandis que le dîner se prépare, les enfants jouent.", "id": "utt0312", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0313.wav", "text": "En revanche, la matinée s'est très bien passée.", "id": "utt0313", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0314.wav", "text": "Malgré les retards, tous les invités sont arrivés.", "id": "utt0314", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0315.wav", "text": "Ainsi, nous évitons les erreurs de transcription.", "id": "utt0315", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0316.wav", "text": "Premièrement, vérifie la connexion. Deuxièmement, ouvre l'application.", "id": "utt0316", "speech_ratio": 0.96}
+{"audio": "lora_segments/utt0317.wav", "text": "Il y a quatre pommes, trois poires et deux bananes sur la table.", "id": "utt0317", "speech_ratio": 0.852}
+{"audio": "lora_segments/utt0318.wav", "text": "Le facteur passe vers neuf heures, jamais après midi.", "id": "utt0318", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0319.wav", "text": "Nous avons acheté deux kilos de farine et un sachet de sucre.", "id": "utt0319", "speech_ratio": 0.956}
+{"audio": "lora_segments/utt0320.wav", "text": "Ma voisine m'a prêté un parapluie et un imperméable.", "id": "utt0320", "speech_ratio": 0.957}
+{"audio": "lora_segments/utt0321.wav", "text": "Le mécanicien a changé les pneus et vérifié les freins.", "id": "utt0321", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0322.wav", "text": "Chaque matin, je lis les nouvelles en buvant mon café.", "id": "utt0322", "speech_ratio": 0.895}
+{"audio": "lora_segments/utt0323.wav", "text": "Après la pluie, l'air sent la terre mouillée.", "id": "utt0323", "speech_ratio": 0.895}
+{"audio": "lora_segments/utt0324.wav", "text": "Le spectacle a duré une heure et demie.", "id": "utt0324", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0325.wav", "text": "Nous avons ri beaucoup pendant ce film comique.", "id": "utt0325", "speech_ratio": 0.914}
+{"audio": "lora_segments/utt0326.wav", "text": "La bibliothèque municipale ferme à dix-huit heures.", "id": "utt0326", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0327.wav", "text": "Ferme le robinet, l'eau coule encore.", "id": "utt0327", "speech_ratio": 0.921}
+{"audio": "lora_segments/utt0328.wav", "text": "Ouvre le couvercle de la casserole.", "id": "utt0328", "speech_ratio": 0.928}
+{"audio": "lora_segments/utt0329.wav", "text": "Pose les cartes sur la table.", "id": "utt0329", "speech_ratio": 0.913}
+{"audio": "lora_segments/utt0330.wav", "text": "Appuie longuement sur le bouton du haut.", "id": "utt0330", "speech_ratio": 0.928}
+{"audio": "lora_segments/utt0331.wav", "text": "Le verre est sale, il faut le laver.", "id": "utt0331", "speech_ratio": 0.931}
+{"audio": "lora_segments/utt0332.wav", "text": "Mets un peu moins de sucre.", "id": "utt0332", "speech_ratio": 0.906}
+{"audio": "lora_segments/utt0333.wav", "text": "Écris la date en haut de la page.", "id": "utt0333", "speech_ratio": 0.924}
+{"audio": "lora_segments/utt0334.wav", "text": "Tourne la clé dans la serrure.", "id": "utt0334", "speech_ratio": 0.921}
+{"audio": "lora_segments/utt0335.wav", "text": "Le sac est lourd, prends les anses.", "id": "utt0335", "speech_ratio": 0.891}
+{"audio": "lora_segments/utt0336.wav", "text": "Rince le bol avant de le ranger.", "id": "utt0336", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0337.wav", "text": "Le garagiste répare le moteur avec une grande attention.", "id": "utt0337", "speech_ratio": 0.947}
+{"audio": "lora_segments/utt0338.wav", "text": "Le juge a lu le dossier pendant deux heures.", "id": "utt0338", "speech_ratio": 0.941}
+{"audio": "lora_segments/utt0339.wav", "text": "La caissière scanne les produits un par un.", "id": "utt0339", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0340.wav", "text": "Le jardinier arrose les plantes avant le lever du soleil.", "id": "utt0340", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0341.wav", "text": "Le professeur distribue les copies à ses élèves.", "id": "utt0341", "speech_ratio": 0.925}
+{"audio": "lora_segments/utt0342.wav", "text": "Nous avons perdu le reçu de la machine à café.", "id": "utt0342", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0343.wav", "text": "La dame au comptoir sourit aux clients.", "id": "utt0343", "speech_ratio": 0.935}
+{"audio": "lora_segments/utt0344.wav", "text": "Mon cousin prépare son concours pour l'été prochain.", "id": "utt0344", "speech_ratio": 0.949}
+{"audio": "lora_segments/utt0345.wav", "text": "Le facteur a un nouveau trajet dans le village.", "id": "utt0345", "speech_ratio": 0.944}
+{"audio": "lora_segments/utt0346.wav", "text": "Un pêcheur ramène sa barque sur le sable.", "id": "utt0346", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0347.wav", "text": "La foule s'éloigne du stade après le match.", "id": "utt0347", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0348.wav", "text": "Le garde surveille l'entrée du bâtiment toute la nuit.", "id": "utt0348", "speech_ratio": 0.955}
+{"audio": "lora_segments/utt0349.wav", "text": "Nous prenons le chemin de traverse jusqu'au pont.", "id": "utt0349", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0350.wav", "text": "La compagnie a organisé un voyage dans les montagnes.", "id": "utt0350", "speech_ratio": 0.958}
+{"audio": "lora_segments/utt0351.wav", "text": "Il enseigne les maths dans un collège de campagne.", "id": "utt0351", "speech_ratio": 0.952}
+{"audio": "lora_segments/utt0352.wav", "text": "Le paysage est digne d'être photographié.", "id": "utt0352", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0353.wav", "text": "La ligne du bus passe devant l'hôpital.", "id": "utt0353", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0354.wav", "text": "Un panneau indique le signal de sortie.", "id": "utt0354", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0355.wav", "text": "Elle se baigne dans le lac dès le matin.", "id": "utt0355", "speech_ratio": 0.942}
+{"audio": "lora_segments/utt0356.wav", "text": "Le règne de ce roi dure depuis vingt ans.", "id": "utt0356", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0357.wav", "text": "La foule grogne contre les retards du train.", "id": "utt0357", "speech_ratio": 0.95}
+{"audio": "lora_segments/utt0358.wav", "text": "La Bretagne est réputée pour ses plages sauvages.", "id": "utt0358", "speech_ratio": 0.949}
+{"audio": "lora_segments/utt0359.wav", "text": "Le diagnostic du médecin rassure toute la famille.", "id": "utt0359", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0360.wav", "text": "Nous enseignons l'orthographe aux enfants avec patience.", "id": "utt0360", "speech_ratio": 0.931}
+{"audio": "lora_segments/utt0361.wav", "text": "Un signe de la main suffit pour les saluer.", "id": "utt0361", "speech_ratio": 0.943}
+{"audio": "lora_segments/utt0362.wav", "text": "Les montagnards descendent au village chaque hiver.", "id": "utt0362", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0363.wav", "text": "Il soigne ses plantes avec un engrais naturel.", "id": "utt0363", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0364.wav", "text": "Une enseigne lumineuse éclaire la rue tranquille.", "id": "utt0364", "speech_ratio": 0.951}
+{"audio": "lora_segments/utt0365.wav", "text": "La campagne est belle au printemps, avec les fleurs.", "id": "utt0365", "speech_ratio": 0.945}
+{"audio": "lora_segments/utt0366.wav", "text": "Papa prépare les pâtes pour tout le monde.", "id": "utt0366", "speech_ratio": 0.932}
+{"audio": "lora_segments/utt0367.wav", "text": "Tu devrais baigner le chien aujourd'hui.", "id": "utt0367", "speech_ratio": 0.925}
+{"audio": "lora_segments/utt0368.wav", "text": "Ce vieux pont enjambe la rivière calme.", "id": "utt0368", "speech_ratio": 0.946}
+{"audio": "lora_segments/utt0369.wav", "text": "La boisson est trop sucrée pour les enfants.", "id": "utt0369", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0370.wav", "text": "L'enseignante écrit au tableau avec de la craie.", "id": "utt0370", "speech_ratio": 0.956}
+{"audio": "lora_segments/utt0371.wav", "text": "Il a gagné le premier prix du concours.", "id": "utt0371", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0372.wav", "text": "Un mignon couple danse sur la place du village.", "id": "utt0372", "speech_ratio": 0.883}
+{"audio": "lora_segments/utt0373.wav", "text": "Le règlement interdit de traverser ici.", "id": "utt0373", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0374.wav", "text": "Nous ramassons des champignons en forêt.", "id": "utt0374", "speech_ratio": 0.939}
+{"audio": "lora_segments/utt0375.wav", "text": "La montagne noire domine toute la région.", "id": "utt0375", "speech_ratio": 0.937}
+{"audio": "lora_segments/utt0376.wav", "text": "Elle parle avec dignité devant l'assemblée.", "id": "utt0376", "speech_ratio": 0.936}
+{"audio": "lora_segments/utt0377.wav", "text": "Le signal sonore prévient les passagers.", "id": "utt0377", "speech_ratio": 0.924}
+{"audio": "lora_segments/utt0378.wav", "text": "Le compagnon du boulanger arrive à l'aube.", "id": "utt0378", "speech_ratio": 0.94}
+{"audio": "lora_segments/utt0379.wav", "text": "Le règne du silence suit la tempête.", "id": "utt0379", "speech_ratio": 0.934}
+{"audio": "lora_segments/utt0380.wav", "text": "Quand nous sommes arrivés, tout le monde était déjà parti.", "id": "utt0380", "speech_ratio": 0.948}
+{"audio": "lora_segments/utt0381.wav", "text": "Après une longue marche, nous avons installé le camp sous les arbres.", "id": "utt0381", "speech_ratio": 0.877}
+{"audio": "lora_segments/utt0382.wav", "text": "Le dimanche matin, le marché du centre accueille les producteurs locaux.", "id": "utt0382", "speech_ratio": 0.964}
+{"audio": "lora_segments/utt0383.wav", "text": "Pendant l'orage, la lumière clignotait et le vent hurlait.", "id": "utt0383", "speech_ratio": 0.953}
+{"audio": "lora_segments/utt0384.wav", "text": "Si tu termines tôt, tu peux venir nous rejoindre au parc.", "id": "utt0384", "speech_ratio": 0.952}

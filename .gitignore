@@ -42,6 +42,8 @@ temp/
 
 # Artefacts derives MFA (regenerables : base french_mfa.dict + corpus/oov_extra.dict)
 corpus/french_mfa_ext.dict
+corpus/mfa_in/
+corpus/mfa_aligned/
 
 # IDE & OS
 .vscode/

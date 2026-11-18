@@ -8,8 +8,6 @@ import json
 from pathlib import Path
 import time
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
 import onnxruntime as ort
 from huggingface_hub import hf_hub_download
 from tokenizers import Tokenizer
@@ -109,6 +107,11 @@ def build_or_get_dynamic_encoder(
 ) -> Path:
     """Patche une seule fois le graphe ONNX de l'encodeur Whisper pour autoriser des durées
     audio courtes dynamiques (ex: 3s, 5s, 8s au lieu de 30s fixes), divisant la latence GPU par 4 à 10.
+
+    Le patch vit dans ``phenix_voice.stt.onnx_dynamic_encoder`` (partage avec
+    ``tools/export_onnx.py``) : il retrouve les cibles par structure plutot que
+    par nom de noeud, donc valide aussi bien pour le graphe onnx-community que
+    pour un graphe re-exporte apres fusion LoRA.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     safe_name = repo_id.replace("/", "--") + "__encoder_fp16_dynamic.onnx"
@@ -117,66 +120,9 @@ def build_or_get_dynamic_encoder(
         return patched_path
 
     raw_enc_path = _resolve_local_or_download(repo_id, subfolder_file)
-    model = onnx.load(raw_enc_path)
+    from phenix_voice.stt.onnx_dynamic_encoder import build_dynamic_encoder_file
 
-    # 1. Supprimer les formes intermédiaires statiques (figées à 3000 / 1500)
-    del model.graph.value_info[:]
-    model.graph.input[0].type.tensor_type.shape.dim[2].ClearField("dim_value")
-    model.graph.input[0].type.tensor_type.shape.dim[2].dim_param = "encoder_sequence_length"
-    model.graph.output[0].type.tensor_type.shape.dim[1].ClearField("dim_value")
-    model.graph.output[0].type.tensor_type.shape.dim[1].dim_param = "encoder_sequence_length_out"
-
-    # 2. Remplacer les cibles Reshape [-1, 1500, ...] par [0, -1, ...] dans toutes les couches
-    for init in model.graph.initializer:
-        if "Concat" in init.name:
-            arr = numpy_helper.to_array(init)
-            if len(arr) >= 2 and arr[0] == -1 and arr[1] == 1500:
-                new_arr = arr.copy()
-                new_arr[0] = 0
-                new_arr[1] = -1
-                init.CopyFrom(numpy_helper.from_array(new_arr, init.name))
-
-    # 3. Découper dynamiquement embed_positions.weight à la longueur réelle T/2
-    starts_init = helper.make_tensor("pos_slice_starts", TensorProto.INT64, [1], [0])
-    axes_init = helper.make_tensor("pos_slice_axes", TensorProto.INT64, [1], [0])
-    idx_init = helper.make_tensor("pos_gather_idx", TensorProto.INT64, [1], [1])
-    model.graph.initializer.extend([starts_init, axes_init, idx_init])
-
-    shape_node = helper.make_node(
-        "Shape",
-        inputs=["/Transpose_output_0"],
-        outputs=["/Transpose_shape"],
-        name="/Shape_transpose",
-    )
-    gather_node = helper.make_node(
-        "Gather",
-        inputs=["/Transpose_shape", "pos_gather_idx"],
-        outputs=["/Transpose_seq_len"],
-        name="/Gather_seq_len",
-        axis=0,
-    )
-    slice_node = helper.make_node(
-        "Slice",
-        inputs=[
-            "embed_positions.weight",
-            "pos_slice_starts",
-            "/Transpose_seq_len",
-            "pos_slice_axes",
-        ],
-        outputs=["/embed_positions_sliced"],
-        name="/Slice_embed_positions",
-    )
-
-    for idx, node in enumerate(model.graph.node):
-        if node.name == "/Add_2":
-            node.input[1] = "/embed_positions_sliced"
-            model.graph.node.insert(idx, shape_node)
-            model.graph.node.insert(idx + 1, gather_node)
-            model.graph.node.insert(idx + 2, slice_node)
-            break
-
-    onnx.save(model, str(patched_path))
-    return patched_path
+    return build_dynamic_encoder_file(Path(raw_enc_path), patched_path)
 
 
 class WhisperDirectMLEngine:
@@ -198,10 +144,12 @@ class WhisperDirectMLEngine:
         cache_dir: str | Path = "models/cache",
         prefer_dml: bool = True,
         warmup_buckets: tuple[int, ...] = (1200,),
+        finetuned_dir: str | Path | None = Path("models/finetuned"),
     ) -> None:
         self.repo_id = repo_id
         self.language = language
         self.cache_dir = Path(cache_dir)
+        self.finetuned_dir = Path(finetuned_dir) if finetuned_dir else None
 
         available_providers = ort.get_available_providers()
         if prefer_dml and "DmlExecutionProvider" in available_providers:
@@ -236,14 +184,20 @@ class WhisperDirectMLEngine:
         so.enable_mem_pattern = False
         so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
-        enc_dynamic_path = build_or_get_dynamic_encoder(repo_id, self.cache_dir)
-        dec_path = _resolve_local_or_download(repo_id, "onnx/decoder_model_fp16.onnx")
-        dec_past_path = _resolve_local_or_download(
-            repo_id, "onnx/decoder_with_past_model_fp16.onnx"
-        )
+        # Modeles finetunes locaux (fusion LoRA -> tools/export_onnx.py) :
+        # pris en priorite s'ils sont complets (encodeur + 2 decodeurs).
+        enc_path, dec_path, dec_past_path = self._resolve_model_paths()
+        if enc_path is not None:
+            print(f"[stt] modeles finetunes locaux : {self.finetuned_dir}")
+        else:
+            enc_path = build_or_get_dynamic_encoder(repo_id, self.cache_dir)
+            dec_path = _resolve_local_or_download(repo_id, "onnx/decoder_model_fp16.onnx")
+            dec_past_path = _resolve_local_or_download(
+                repo_id, "onnx/decoder_with_past_model_fp16.onnx"
+            )
 
         self.enc_session = ort.InferenceSession(
-            str(enc_dynamic_path), so, providers=self.providers
+            str(enc_path), so, providers=self.providers
         )
         self.dec_session = ort.InferenceSession(dec_path, so, providers=self.providers)
         self.dec_past_session = ort.InferenceSession(
@@ -255,6 +209,36 @@ class WhisperDirectMLEngine:
 
         if warmup_buckets:
             self._warmup(warmup_buckets)
+
+    def _resolve_model_paths(self) -> tuple[Path | None, str | None, str | None]:
+        """Cherche les 3 graphes finetunes (fusion LoRA) dans ``finetuned_dir``.
+
+        Retourne ``(None, None, None)`` si le dossier est absent ou incomplet :
+        l'appelant bascule alors sur le modele de base onnx-community.
+        """
+        ft = self.finetuned_dir
+        if not ft or not ft.is_dir():
+            return None, None, None
+        dec = ft / "decoder_model_fp16.onnx"
+        dec_past = ft / "decoder_with_past_model_fp16.onnx"
+        dyn = ft / "encoder_model_fp16_dynamic.onnx"
+        raw = ft / "encoder_model_fp16.onnx"
+        if not (dec.is_file() and dec_past.is_file()):
+            return None, None, None
+        if dyn.is_file():
+            enc: Path | None = dyn
+        elif raw.is_file():
+            patched = self.cache_dir / "finetuned__encoder_fp16_dynamic.onnx"
+            if not (patched.exists() and patched.stat().st_size > 1_000_000):
+                from phenix_voice.stt.onnx_dynamic_encoder import build_dynamic_encoder_file
+
+                build_dynamic_encoder_file(raw, patched)
+            enc = patched
+        else:
+            enc = None
+        if enc is None:
+            return None, None, None
+        return enc, str(dec), str(dec_past)
 
     def _warmup(self, buckets: tuple[int, ...]) -> None:
         """Pré-compile les shaders DirectML sur la carte AMD Radeon pour éviter tout pic à la 1re phrase."""

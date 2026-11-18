@@ -17,6 +17,12 @@ Usage (venv-rocm / ROCm) :
 
 Options utiles : --steps N (limite de pas, smoke test), --limit N (segments),
 --batch, --max-frames (plafond de trames, 1000 = 10 s), --fp32-weights.
+
+Surveillance thermique (tools/thermal_guard.py) : si le GPU depasse
+--max-temp (defaut 80 C), les pas s'arretent (tout reste en RAM) jusqu'au
+retour sous --resume-temp (defaut 70 C). Meme regime pour le CPU
+(--max-cpu-temp / --resume-cpu-temp, defaut 90/80) si un capteur existe.
+Un capteur absent est ignore silencieusement. --no-thermal pour desactiver.
 """
 
 from __future__ import annotations
@@ -138,6 +144,12 @@ def main() -> int:
     parser.add_argument("--log-every", type=int, default=10, help="imprimer la perte tous les N pas")
     parser.add_argument("--fp32-weights", action="store_true", help="poids gelés en fp32 (defaut : bf16, config mesuree)")
     parser.add_argument("--no-checkpointing", action="store_true", help="desactiver le checkpointing d'activations")
+    parser.add_argument("--max-temp", type=float, default=80.0, help="pause thermique GPU au-dela (C)")
+    parser.add_argument("--resume-temp", type=float, default=70.0, help="reprise thermique GPU en dessous (C)")
+    parser.add_argument("--max-cpu-temp", type=float, default=90.0, help="pause thermique CPU au-dela (C)")
+    parser.add_argument("--resume-cpu-temp", type=float, default=80.0, help="reprise thermique CPU en dessous (C)")
+    parser.add_argument("--thermal-every", type=float, default=15.0, help="intervalle de verif thermique (s)")
+    parser.add_argument("--no-thermal", action="store_true", help="desactiver la surveillance thermique")
     args = parser.parse_args()
 
     if args.max_frames % 2:
@@ -243,12 +255,46 @@ def main() -> int:
     log_path = args.out / "training_log.jsonl"
     log_f = log_path.open("w", encoding="utf-8")
 
+    # --- Surveillance thermique (pause en cours de route, tout reste en RAM) --
+    guard = None
+    if not args.no_thermal:
+        from thermal_guard import ThermalGuard
+
+        guard = ThermalGuard(
+            max_gpu=args.max_temp,
+            resume_gpu=args.resume_temp,
+            max_cpu=args.max_cpu_temp,
+            resume_cpu=args.resume_cpu_temp,
+            interval=args.thermal_every,
+        )
+        snap = guard.snapshot()
+        if snap:
+            print(f"  thermique initiale : {snap}")
+
     step = 0
     loss_vals: list[float] = []
     t_start = time.perf_counter()
+    pauses_total = 0.0
     done = False
     for passage in range(1, args.passages + 1):
         for batch in loader:
+            # Verif thermique : au-dela du seuil, on gele les pas (RAM intacte)
+            # et on attend le refroidissement avant de continuer.
+            if guard is not None:
+                motif = guard.check()
+                if motif:
+                    duree = guard.wait_cool()
+                    pauses_total += duree
+                    log_f.write(
+                        json.dumps(
+                            {"step": step, "passage": passage,
+                             "event": "thermal_pause", "motif": motif,
+                             "duree_sec": round(duree, 1),
+                             "mesures": guard.snapshot()}
+                        )
+                        + "\n"
+                    )
+                    log_f.flush()
             step += 1
             t0 = time.perf_counter()
             optimizer.zero_grad(set_to_none=True)
@@ -283,6 +329,7 @@ def main() -> int:
     log_f.close()
 
     elapsed = time.perf_counter() - t_start
+    actif = elapsed - pauses_total
     if not loss_vals:
         raise SystemExit("Aucun pas effectue (manifeste trop petit ?)")
 
@@ -296,19 +343,24 @@ def main() -> int:
         loss_first=round(loss_vals[0], 5),
         loss_last=round(loss_vals[-1], 5),
         elapsed_sec=round(elapsed, 1),
+        active_sec=round(actif, 1),
+        thermal_pauses=guard.pauses if guard else 0,
+        thermal_pause_sec=round(pauses_total, 1),
         finished=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
     (args.out / "run_config.json").write_text(
         json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    avg = elapsed / step
+    avg = actif / step
     print()
     print(f"adaptateurs entraînables : {n_train:,} params ({n_train / sum(p.numel() for p in model.parameters()):.2%})")
     print(f"pas effectues            : {step} ({args.passages} passages max, batch {args.batch})")
     print(f"perte                    : {loss_vals[0]:.4f} -> {loss_vals[-1]:.4f}")
-    print(f"temps total / pas moyen  : {elapsed:.0f} s / {avg:.2f} s")
-    print(f"debit                    : ~{step * args.batch * 3600 / elapsed:.0f} segments/heure")
+    print(f"temps total / pas moyen  : {elapsed:.0f} s / {avg:.2f} s (hors pauses)")
+    print(f"debit                    : ~{step * args.batch * 3600 / actif:.0f} segments/heure")
+    if guard and guard.pauses:
+        print(f"pauses thermiques        : {guard.pauses} ({pauses_total:.0f} s au total)")
     print(f"adaptateur sauvegarde    : {args.out}")
     print("RESULTAT: OK - entraînement LoRA reel termine")
     return 0
