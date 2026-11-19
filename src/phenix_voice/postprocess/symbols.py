@@ -129,7 +129,7 @@ def _core_and_offset(token: str) -> tuple[str, int]:
 
 
 def _email_context(prev_core: str | None, next_core: str | None) -> bool:
-    """Détecte un contexte e-mail pour coller « @ » (ex. « laure arobase gmail »)."""
+    """Détecte un contexte e-mail pour coller « @ » (ex. « camille arobase gmail »)."""
     if not prev_core or not next_core:
         return False
     if prev_core.lower() in _EMAIL_STOP_WORDS or next_core.lower() in _EMAIL_STOP_WORDS:

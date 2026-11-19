@@ -48,8 +48,8 @@ def test_spaced_symbol_gets_french_spacing() -> None:
 
 def test_arobase_glued_in_email_context() -> None:
     proc = HybridPunctuationProcessor()
-    r = proc.process("écris laure arobase gmail")
-    assert r.text_to_inject == "Écris laure@gmail"
+    r = proc.process("écris camille arobase gmail")
+    assert r.text_to_inject == "Écris camille@gmail"
 
 
 def test_arobase_keeps_dictated_spaces_outside_email_context() -> None:
@@ -79,8 +79,8 @@ def test_multiword_symbol_form() -> None:
 
 def test_spelling_mode_emits_symbols_for_email() -> None:
     assert (
-        text_to_nato_spelling("mot laure arobase mot gmail point mot com")
-        == "laure@gmail.com"
+        text_to_nato_spelling("mot camille arobase mot gmail point mot com")
+        == "camille@gmail.com"
     )
     assert text_to_nato_spelling("alpha virgule bravo") == "a,b"
 

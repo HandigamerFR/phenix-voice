@@ -11,7 +11,7 @@
   `--copy` (installation où les liens échouent).
 
 Usage :
-    python tools/build_mfa_corpus.py [--speaker laure] [--include-review] [--copy]
+    python tools/build_mfa_corpus.py [--speaker camille] [--include-review] [--copy]
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def link_or_copy(src: Path, dst: Path, copy: bool) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Corpus MFA depuis le manifeste Studio")
-    ap.add_argument("--speaker", default="laure", help="nom du locuteur (sous-dossier)")
+    ap.add_argument("--speaker", default="camille", help="nom du locuteur (sous-dossier)")
     ap.add_argument("--include-review", action="store_true",
                     help="inclure les segments marques review=true (douteux)")
     ap.add_argument("--copy", action="store_true",

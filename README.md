@@ -5,6 +5,11 @@
 > **Statut** : en développement actif. La phase « dictée + commandes + épellation »
 > est fonctionnelle et testée en conditions réelles ; le projet recherche des
 > contributeurs — voir [CONTRIBUTING.md](./CONTRIBUTING.md).
+>
+> **Transparence** : le code a été écrit **intégralement par une IA** (sans
+> revue de code humaine — l'auteur ne programme pas Python). L'ensemble est
+> estimé à **moins de 25 % terminé** : audit, architecture et optimisations
+> restent à faire, d'où l'appel à contributeurs.
 
 ## Pourquoi Phénix Voice ?
 

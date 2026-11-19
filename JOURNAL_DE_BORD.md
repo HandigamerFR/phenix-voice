@@ -301,7 +301,7 @@ Appliquer avant test utilisateur trois correctifs/évolutions prioritaires du sy
 ## Session 9 - 13 Novembre 2026 : Analyse forensique de la session du 12/11 soir, Étape 1 (cohérence : ponctuation auto + casse + classification texte/acoustique) & génération des 9 choix
 
 ### 1. Analyse forensique de la session de test du 12/11 soir (demande prioritaire de l'utilisateur — TERMINÉE)
-- **Périmètre réel** : blocs 22h (47) + 23h (46) = **93 souffles** (le bloc « 21h » au format `fp` vient du **10/11**, exclu). Scripts dans `C:\Users\laure\AppData\Local\Temp\opencode\` (`scope_2223.py` + `analyze_*.py`), sources = `logs/dictation_debug.jsonl`, `logs/injection_trace.jsonl`, `logs/session_trace.jsonl`.
+- **Périmètre réel** : blocs 22h (47) + 23h (46) = **93 souffles** (le bloc « 21h » au format `fp` vient du **10/11**, exclu). Scripts dans `C:\Users\camille\AppData\Local\Temp\opencode\` (`scope_2223.py` + `analyze_*.py`), sources = `logs/dictation_debug.jsonl`, `logs/injection_trace.jsonl`, `logs/session_trace.jsonl`.
 - **Dysfonctionnements confirmés** (rapport rendu à l'utilisateur) :
   1. **9 alternatives jamais atteintes** : distribution 1→12, 2→23, **3→50**, 4→5, 5→2, 6→1 (générateur = substitutions unitaires seules, seuil 0.04 → plafond ~3) ;
   2. **aucun signal « moins de 9 »** (grille de boutons `---` sans explication) ;

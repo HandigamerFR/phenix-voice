@@ -619,7 +619,7 @@ class PhenixVoiceController:
                 "• <b>« En lettres un »</b> ou <b>« Mot un »</b> : insérer le mot littéral « un » (pas le chiffre)<br>"
                 "• <b>Accents</b> : <b>« Echo accent aigu »</b> compose avec la dernière lettre (→ « é ») ; <b>« Charlie cédille »</b> (ou « accent cédille ») → « ç » ; <b>« accent grave »</b> seul → « è » (aussi circonflexe, tréma)<br>"
                 "• <b>Casse</b> : <b>« Majuscule »</b> = prochaine lettre en majuscule, <b>« Tout en majuscules »</b> = toutes les suivantes, <b>« Fin majuscules »</b> = retour au normal — même chose avec <b>« Minuscule » / « Tout en minuscules » / « Fin minuscules »</b> (singulier ou pluriel acceptés)<br>"
-                "• <b>« Virgule », « Point », « Arobase », « Astérisque »…</b> : insèrent le symbole (ex. adresse e-mail : « Mot laure point arobase mot gmail »)<br>"
+                "• <b>« Virgule », « Point », « Arobase », « Astérisque »…</b> : insèrent le symbole (ex. adresse e-mail : « Mot camille point arobase mot gmail »)<br>"
                 "• <b>« Espace »</b> : insérer un espace<br>"
                 "• <b>« Fin épellation »</b> ou <b>« Passer en mode dictée »</b> : fermer la fenêtre et revenir à la dictée normale<br>"
                 "• <b>« Valider la correction »</b> : appliquer le texte de la fenêtre (si ouverte depuis la correction)<br>"

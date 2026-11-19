@@ -18,7 +18,7 @@ Particularités (ce que MFA apporte réellement) :
   conservées — les TextGrid MFA sont en minuscules, inutilisables tels quels).
 
 Usage :
-    python tools/textgrid_to_manifest.py [--speaker laure] [--max-seconds 9.5]
+    python tools/textgrid_to_manifest.py [--speaker camille] [--max-seconds 9.5]
         [--min-speech-ratio 0.45] [--out corpus/lora_manifest.jsonl]
 """
 
@@ -110,7 +110,7 @@ def split_words_into_chunks(
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="TextGrid MFA -> manifeste LoRA JSONL")
-    ap.add_argument("--speaker", default="laure")
+    ap.add_argument("--speaker", default="camille")
     ap.add_argument("--max-seconds", type=float, default=9.5,
                     help="durée max d'un segment (au-dela : découpe aux mots)")
     ap.add_argument("--min-speech-ratio", type=float, default=0.45,
