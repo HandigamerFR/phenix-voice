@@ -2,6 +2,10 @@
 
 **Phénix Voice** est une solution moderne de reconnaissance vocale, de dictée universelle et de contrôle de Windows 100 % locale, pensée pour s'adapter aux voix atypiques ou dysarthriques et remplacer avantageusement *Dragon NaturallySpeaking*.
 
+> **Statut** : en développement actif. La phase « dictée + commandes + épellation »
+> est fonctionnelle et testée en conditions réelles ; le projet recherche des
+> contributeurs — voir [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ## Pourquoi Phénix Voice ?
 
 1. **Adapté à la dysarthrie et aux voix atypiques** :
@@ -27,15 +31,35 @@
 | [`docs/CAHIER_DES_CHARGES.md`](./docs/CAHIER_DES_CHARGES.md) | Expression complète des besoins fonctionnels et ergonomiques (5 modules). |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Architecture technique (pipeline en 4 étages, stack multi-GPU) et feuille de route en 6 phases. |
 | [`AGENTS.md`](./AGENTS.md) | Instructions automatiques pour les agents de code (OpenCode, etc.). |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Guide du contributeur : mise en place, tests, conventions de code. |
+| [`LICENSE`](./LICENSE) | Licence GNU GPL v3. |
 
 ---
 
 ## Feuille de Route (Synthèse)
 
 - [x] **Phase 0** : Cadrage des besoins, architecture, journal de bord, prompt de reprise et création du dépôt GitHub.
-- [ ] **Phase 1** : Socle Audio, Accélération GPU AMD (Vulkan/DirectML) & Dictée Universelle de base (POC sans boîte de dictée).
-- [ ] **Phase 2** : *Shadow Buffer* & Interface de Correction Anti-Dérive (Voix + Souris, *Apprendre* vs *Oups*, empreintes acoustiques des commandes).
-- [ ] **Phase 3** : Adaptation Immédiate (Dictionnaire de règles *« A -> B »*, vocabulaire personnel & importateur moderne de mails/documents).
-- [ ] **Phase 4** : Studio d'Étalonnage Dysarthrie & Fine-Tuning Local (*LoRA* + *Snapshots* de profil + profils de fatigue).
-- [ ] **Phase 5** : Contrôle de Windows, Souris & Macros vocales.
+- [x] **Phase 1** : Socle Audio, Accélération GPU AMD (Vulkan/DirectML) & Dictée Universelle de base (POC sans boîte de dictée).
+- [x] **Phase 2** : *Shadow Buffer* & Interface de Correction Anti-Dérive (Voix + Souris, *Apprendre* vs *Oups*, empreintes acoustiques des commandes).
+- [x] **Phase 3** : Adaptation Immédiate (Dictionnaire de règles *« A -> B »*, vocabulaire personnel & importateur moderne de mails/documents).
+- [x] **Phase 4** : Studio d'Étalonnage Dysarthrie & Fine-Tuning Local (*LoRA* + *Snapshots* de profil + profils de fatigue).
+- [x] **Phase 5** : Contrôle de Windows, Souris & Macros vocales (en cours de consolidation : entraînement LoRA + export ONNX validés).
 - [ ] **Phase 6** : Expérience Multi-Utilisateurs, Auto-calibration matérielle & Installeur Windows.
+
+Le détail session par session est dans [`JOURNAL_DE_BORD.md`](./JOURNAL_DE_BORD.md).
+
+---
+
+## Licence
+
+Distribué sous **[GPL-3.0-only](./LICENSE)**.
+
+Seule exception : `src/phenix_voice/resources/lexique_accords.tsv`, dérivé du
+**Lexique 383** sous licence **CC BY-SA 4.0**
+([`src/phenix_voice/resources/LICENSE-CC-BY-SA-4.0.txt`](./src/phenix_voice/resources/LICENSE-CC-BY-SA-4.0.txt)).
+
+## Contribuer
+
+Le projet recherche des co-développeurs — voir **[CONTRIBUTING.md](./CONTRIBUTING.md)**
+(mise en place, tests, conventions). Les issues étiquetées
+`bonne-premiere-contribution` sont un bon point de départ.
