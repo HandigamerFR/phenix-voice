@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 import re
 
+from phenix_voice.postprocess.punctuation import is_phenix_command
+
 
 def _normalize(text: str) -> str:
     cleaned = text.strip().lower()
@@ -172,17 +174,18 @@ class PlausibilityArbitrator:
             a.strip() for a in alternatives if a.strip() and a.strip() != raw_text.strip()
         ]
 
-        # 0. Court-circuit d'empreinte acoustique DTW — TOUJOURS prioritaire (décision
+        # 0. Court-circuit d'empreinte acoustique DTW — prioritaire (décision
         # utilisateur 14/11) : quand `AcousticCommandProtector.match_command` a matché
         # une empreinte de la voix de l'utilisateur, le texte du template de commande
         # prime sur le rendu du STT, même confiant (ex: « Coupé Phoenix » à confiance 0,8
         # au lieu de « Couper Phénix » → était injecté en dictée au lieu d'être exécuté).
-        # Sécurité contre une dictée longue qui matcherait DTW par accident : les faux
-        # positifs sont filtrés en amont par `match_command`, qui n'accepte que les
-        # segments de 0,25 à 1,85 s, impose une distance DTW ≤ 0,16 (seuil strict) et
-        # compare contre des templates courts (« Couper Phénix », « Phénix au repos »…) :
-        # un long segment de dictée renvoie donc `None` et n'atteint jamais ce bloc.
-        if acoustic_fp_match is not None:
+        # GARDE-FOU (19/11) : le template doit être une **commande Phénix reconnue**
+        # (`is_phenix_command`). Un template hérité de Dragon (« Au repos », « Écoute »)
+        # n'est pas une commande de l'application et ne doit jamais écraser le STT —
+        # c'était la dérive « Virgule » → « Au repos » (faux positifs DTW 0,136-0,157).
+        # Les faux positifs sur de vraies commandes sont filtrés en amont par
+        # `match_command` (durée 0,25-1,85 s + seuil de distance strict).
+        if acoustic_fp_match is not None and is_phenix_command(acoustic_fp_match[0]):
             return ArbitratedResult(
                 best_text=acoustic_fp_match[0],
                 ranked_alternatives=candidates[:9],

@@ -91,7 +91,7 @@ class AcousticCommandProtector:
     def __init__(
         self,
         manifest_path: str | Path = "user_data/calibration/manifest.json",
-        distance_threshold: float = 0.16,
+        distance_threshold: float = 0.11,
     ) -> None:
         self.manifest_path = Path(manifest_path)
         self.distance_threshold = distance_threshold

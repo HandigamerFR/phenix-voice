@@ -285,6 +285,37 @@ COMMAND_RECALIBRATION_KEYS = _index_map(COMMAND_RECALIBRATION_COMMANDS)
 PRESS_ENTER_KEYS = _index_set(PRESS_ENTER_COMMANDS)
 CHOOSE_KEYS = _index_map(CHOOSE_MAP)
 
+# Union de tous les index ci-dessus — garde-fou « commande valide » (19/11).
+# Sert à valider le template DTW avant de le laisser court-circuiter l'arbitre
+# (`plausibility.arbitrate`). Un template hérité de Dragon (« Au repos »,
+# « Écoute » — enregistrés au studio mais PAS des commandes Phénix) ne doit
+# jamais écraser le texte du STT.
+_ALL_COMMAND_KEYS: set[str] = (
+    WAKE_KEYS
+    | SLEEP_KEYS
+    | MUTE_KEYS
+    | SHOW_HELP_KEYS
+    | APPLY_CORRECTION_KEYS
+    | SCRATCH_KEYS
+    | OUPS_KEYS
+    | SPELLING_ENTER_KEYS
+    | SPELLING_EXIT_KEYS
+    | OPEN_CORRECTION_KEYS
+    | OPEN_STUDIO_KEYS
+    | PRESS_ENTER_KEYS
+    | set(COMMAND_RECALIBRATION_KEYS)
+    | set(CHOOSE_KEYS)
+)
+
+
+def is_phenix_command(text: str) -> bool:
+    """Vrai si `text` est une commande Phénix reconnue.
+
+    Compare via `command_keys()` (casse, accents, apostrophes tolérés). Une
+    dictée ou un ancien motif Dragon (« Au repos ») renvoie False.
+    """
+    return any(key in _ALL_COMMAND_KEYS for key in command_keys(text))
+
 # Remplacements de ponctuation dictée et équivalences phonétiques dysarthriques
 SPOKEN_PUNCTUATION_RULES: list[tuple[re.Pattern[str], str]] = [
     (

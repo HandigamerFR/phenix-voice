@@ -93,6 +93,36 @@ def test_arbitrator_caps_alternatives_at_nine() -> None:
     assert len(res.ranked_alternatives) > 0
 
 
+def test_arbitrator_rejects_dtw_template_that_is_not_a_phenix_command() -> None:
+    """Garde-fou 19/11 : un template DTW qui n'est PAS une commande Phénix est rejeté.
+
+    Constat terrain 19/11 : « Virgule » (dictée) tombait sur le template Dragon
+    « Au repos » (faux positif DTW 0,136-0,157) et le court-circuit écrasait le
+    STT. `is_phenix_command` doit filtrer ces templates hérités.
+    """
+    arb = PlausibilityArbitrator(enable_strict_dictionary=False)
+    res = arb.arbitrate(
+        raw_text="Virgule",
+        alternatives=["Virgule ,"],
+        acoustic_confidence=0.9,
+        audio_duration_s=0.8,
+        acoustic_fp_match=("Au repos", 0.14),
+    )
+    assert res.best_text == "Virgule"  # texte du STT preserve
+    assert not res.was_adapted
+
+    # Une vraie commande reste prioritaire (non-regression).
+    ok = arb.arbitrate(
+        raw_text="Coupé Phoenix",
+        alternatives=[],
+        acoustic_confidence=0.8,
+        audio_duration_s=1.4,
+        acoustic_fp_match=("Couper Phénix", 0.1),
+    )
+    assert ok.best_text == "Couper Phénix"
+    assert ok.was_adapted
+
+
 def test_arbitrator_dtw_fingerprint_wins_over_confident_stt() -> None:
     """Le filet acoustique DTW doit prendre le dessus MÊME sur un STT confiant.
 
