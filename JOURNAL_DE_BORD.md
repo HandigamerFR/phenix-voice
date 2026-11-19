@@ -661,3 +661,13 @@ Deux échecs répertoriés par l'utilisateur, diagnostic mené sur `logs/injecti
 - **Tests : +3 → `tests/test_hotkeys.py` = 7 tests** : (1) un callback qui plante en `TypeError` n'est appelé **qu'une fois** (régression directe), (2) `toggle_mute`/`toggle_sleep` avec `source="hotkey"` basculent **une seule fois** et journalisent `source=hotkey`, (3) `mute_mic_completely` ne lève plus d'exception et journalise `via=voice_command`.
 - **Validation** : `test_hotkeys.py` + `test_command_matching.py` = **25 passed** ; suite complète = **163 passed, 1 failed** — l'échec `test_phase1.py::test_user_voice_calibration_samples_if_present` **reproduit sur l'arbre propre (stash)** = régression **préexistante** (échantillons `cmd_oups`), sans rapport avec ce fix.
 - **Suite immédiate** : commit + push, validation terrain (mute vocal « Couper Phénix » → F8 doit rallumer), puis reprendre les **2 fixes DTW validés** (garde-fou « commande valide » + seuil 0,11).
+
+### 17. Fix F8 validé au terrain + garde-fou DTW « Virgule » → « Au repos » (19/11)
+- **Fix F8 validé par l'utilisateur en conditions réelles** (« j'ai fait le test manuellement, ça fonctionne ») → commit `16bf23c` close la boucle du §16.
+- **Reste : « , » rend toujours « Au repos »** → les 2 fixes DTW validés ont été implémentés (commit `a41117f`) :
+  1. **Garde-fou « commande valide »** : `is_phenix_command(text)` dans `postprocess/punctuation.py` (union de tous les index `*_KEYS` + `command_keys()`), appelé par le court-circuit `acoustic_fp_match` de `plausibility.arbitrate` — un template qui n'est pas une commande Phénix reconnue est **ignoré** (le texte du STT est préservé). Vérifié : « Au repos » → KO, « Écoute » → KO, toutes les vraies commandes (`Couper Phénix`, `Phénix repos`, `Choisir un`…) → OK.
+  2. **Seuil DTW 0,16 → 0,11** (`audio/fingerprints.py`) : vrais matches OTAN ≈ 0,107 acceptés, faux positifs (≥ 0,136) rejetés.
+- **Vérification directe** : `arbitrate(raw='Virgule', fp=('Au repos', 0.14))` → best_text `'Virgule'`, `was_adapted=False` ; `fp=('Couper Phénix', 0.1)` → reste prioritaire.
+- **Tests** : +1 `test_arbitrator_rejects_dtw_template_that_is_not_a_phenix_command` → ciblé 9 passed ; suite complète **163 passed + 1 nouveau = 164**, 1 échec préexistant `test_phase1` (cmd_oups, hors sujet, déjà constaté sur arbre propre).
+- **Note** : la suppression du wav `cmd_au_repos` au studio n'est **plus nécessaire** (le garde-fou le rend inerte), mais reste possible pour alléger le manifeste.
+- **Suite immédiate** : **discussion de l'ouverture au développement communautaire** (messages forums, revue de code, lignes mortes/optimisations) — consigne utilisateur : en parler AVANT tout travail de préparation.
