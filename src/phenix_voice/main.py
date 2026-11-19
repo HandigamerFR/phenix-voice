@@ -265,7 +265,12 @@ class PhenixVoiceController:
 
     def toggle_mute(self, source_or_checked: Any = "ui", **details) -> None:
         """Allume ou coupe totalement le micro (F8, bouton HUD, ou autre)."""
-        source = self._normalize_source_arg(source_or_checked)
+        # hotkeys envoie source="hotkey" en mot-clé : il atterrit dans
+        # **details (le paramètre s'appelle source_or_checked). Sans ce
+        # retrait, log_action recevait source en double -> TypeError ->
+        # le fallback du listener rappelait on_toggle_mute() et la seconde
+        # bascule annulait la premiere : F8 n'avait aucun effet (19/11).
+        source = self._normalize_source_arg(details.pop("source", source_or_checked))
         if self.engine is None:
             self.injection_logger.log_action("mic_toggle_ignored", source=source, reason="engine_not_ready", **details)
             return
@@ -303,12 +308,14 @@ class PhenixVoiceController:
             previous_muted=prev_muted,
             muted=True,
             sleeping=self.is_sleeping,
-            action="mute_completely",
+            via="voice_command",
         )
 
     def toggle_sleep(self, source_or_checked: Any = "ui", **details) -> None:
         """Bascule entre Écoute Active et Veille vocale (« Phénix repos » / F9)."""
-        source = self._normalize_source_arg(source_or_checked)
+        # Même retrait que toggle_mute : source="hotkey" vient de hotkeys.py
+        # via **details et ferait doublon avec le mot-clé source du log (F9).
+        source = self._normalize_source_arg(details.pop("source", source_or_checked))
         if self.engine is None:
             self.injection_logger.log_action("sleep_toggle_ignored", source=source, reason="engine_not_ready", **details)
             return

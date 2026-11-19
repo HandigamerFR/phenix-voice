@@ -49,18 +49,16 @@ class GlobalInputMonitor:
             self._debug("hotkey_error", error=repr(exc))
 
     def _handle_key_press(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
+        # Pas de repli "sans argument" sur TypeError : si le callback plante
+        # APRÈS avoir basculé l'état, un second appel annule la premiere
+        # bascule (bug F8 du 19/11). Tous les callbacks acceptent **details ;
+        # une exception est journalisee par _on_key_press sans tuer le listener.
         if key == self.mute_key:
             self._debug("hotkey_seen", key="F8")
-            try:
-                self.on_toggle_mute(source="hotkey", key="F8")
-            except TypeError:
-                self.on_toggle_mute()
+            self.on_toggle_mute(source="hotkey", key="F8")
         elif key == self.sleep_key and self.on_toggle_sleep:
             self._debug("hotkey_seen", key="F9")
-            try:
-                self.on_toggle_sleep(source="hotkey", key="F9")
-            except TypeError:
-                self.on_toggle_sleep()
+            self.on_toggle_sleep(source="hotkey", key="F9")
         elif key in (
             keyboard.Key.enter,
             keyboard.Key.up,
@@ -71,19 +69,13 @@ class GlobalInputMonitor:
             keyboard.Key.end,
         ):
             if self.on_cursor_moved:
-                try:
-                    self.on_cursor_moved(source="hotkey_nav", key=str(key))
-                except TypeError:
-                    self.on_cursor_moved()
+                self.on_cursor_moved(source="hotkey_nav", key=str(key))
 
     def _on_mouse_click(
         self, x: int, y: int, button: mouse.Button, pressed: bool
     ) -> None:
         if pressed and self.on_cursor_moved:
-            try:
-                self.on_cursor_moved(source="mouse_click", button=str(button))
-            except TypeError:
-                self.on_cursor_moved()
+            self.on_cursor_moved(source="mouse_click", button=str(button))
 
     def start(self) -> None:
         if self._kb_listener is None:
