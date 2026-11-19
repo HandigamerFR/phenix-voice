@@ -671,3 +671,19 @@ Deux échecs répertoriés par l'utilisateur, diagnostic mené sur `logs/injecti
 - **Tests** : +1 `test_arbitrator_rejects_dtw_template_that_is_not_a_phenix_command` → ciblé 9 passed ; suite complète **163 passed + 1 nouveau = 164**, 1 échec préexistant `test_phase1` (cmd_oups, hors sujet, déjà constaté sur arbre propre).
 - **Note** : la suppression du wav `cmd_au_repos` au studio n'est **plus nécessaire** (le garde-fou le rend inerte), mais reste possible pour alléger le manifeste.
 - **Suite immédiate** : **discussion de l'ouverture au développement communautaire** (messages forums, revue de code, lignes mortes/optimisations) — consigne utilisateur : en parler AVANT tout travail de préparation.
+
+### 18. Ouverture au développement communautaire — préparatifs (19/11)
+- **Démarche discutée avec l'utilisateur (outil `question`) puis validée** :
+  1. **Mode** : appel à contributeurs (dépôt ouvert + issues « bonne première contribution » + messages forums pour recruter 2-3 co-développeurs ; l'auteur garde la main sur le merge).
+  2. **Canaux** : forums francophones + Tech for Good (FR), Reddit/HN en option (EN).
+  3. **Ordre** : audience d'abord (LICENSE/CONTRIBUTING/README → audit code → issues → messages).
+  4. **Licence** : **GNU GPLv3** (`LICENSE` officiel téléchargé, `pyproject.toml` MIT → `GPL-3.0-only`).
+  5. **Transparence exigée par l'utilisateur dans TOUS les messages** : développement **100 % IA, sans revue de code de sa part** (il ne maîtrise pas Python, résultats satisfaisants quand même), projet estimé à **moins de 25 % terminé**, appel explicite à des collaborateurs pour **auditer/architecturer**.
+- **Fait (commits `f20d21f` puis `38bb6df`, dépôt passé PUBLIC via `gh repo edit`)** :
+  - `LICENSE` (GPL-3.0) + `CONTRIBUTING.md` (mise en place `.venv`, ~160 tests, conventions : commits ASCII, code en français, zéro réseau, note Lexique 383 = CC BY-SA 4.0) ;
+  - README : statut, avertissement transparence IA, phases 1-5 marquées terminées (roadmap avant périmée), sections Licence/Contribuer ;
+  - `docs/APPEL_CONTRIBUTEURS.md` : 4 messages prêts (Tech for Good FR, Reddit r/opensource EN, forum FR technique, message court) + checklist de publication.
+- **Audit de confidentialité** : aucun `user_data/`, `logs/`, `.wav` ni manifeste d'étalonnage dans l'historique git ✅ ; **prénom anonymisé** (« laure » → « camille » fictif) dans `main.py`, `symbols.py`, `test_symbols.py`, les outils `build_mfa_corpus.py`/`textgrid_to_manifest.py` et le JOURNAL (chemin `C:\Users\...`). Tests vérifiés après remplacement (**35 passed** sur `test_symbols` + `test_command_matching`).
+- **Extension OpenCode Browse** : la notification d'installation suggérée par OpenCode a été identifiée (extension Chrome officielle permettant à l'agent d'utiliser le vrai navigateur avec les sessions de l'utilisateur) — utile pour publier les messages forums automatiquement ; à installer depuis le Chrome Web Store si l'utilisateur le souhaite.
+- **En cours** : sous-agent d'**audit du code** (code mort, doublons, optimisations, dette technique) → produira les premières issues GitHub (`bonne-premiere-contribution`, `optimisation`, `dette-technique`).
+- **Reste** : créer les issues à partir de l'audit → publier les messages (l'utilisateur, ou via Browse si installé).
