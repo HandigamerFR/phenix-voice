@@ -6,10 +6,13 @@
 > est fonctionnelle et testée en conditions réelles ; le projet recherche des
 > contributeurs — voir [CONTRIBUTING.md](./CONTRIBUTING.md).
 >
-> **Transparence** : le code a été écrit **intégralement par une IA** (sans
-> revue de code humaine — l'auteur ne programme pas Python). L'ensemble est
-> estimé à **moins de 25 % terminé** : audit, architecture et optimisations
-> restent à faire, d'où l'appel à contributeurs.
+> **Transparence** : le code a été écrit **intégralement par une IA** — je ne
+> programme pas en Python aujourd'hui. J'ai toutefois été **formé au
+> développement il y a une dizaine d'années** : cette base me permet de
+> **superviser** le projet (cadrer l'architecture, relire la logique, valider
+> les comportements en conditions réelles), sans rédiger le code ligne à
+> ligne. L'ensemble est estimé à **moins de 25 % terminé** : audit,
+> architecture et optimisations restent à faire, d'où l'appel à contributeurs.
 
 ## Pourquoi Phénix Voice ?
 

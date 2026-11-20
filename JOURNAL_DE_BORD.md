@@ -678,7 +678,7 @@ Deux échecs répertoriés par l'utilisateur, diagnostic mené sur `logs/injecti
   2. **Canaux** : forums francophones + Tech for Good (FR), Reddit/HN en option (EN).
   3. **Ordre** : audience d'abord (LICENSE/CONTRIBUTING/README → audit code → issues → messages).
   4. **Licence** : **GNU GPLv3** (`LICENSE` officiel téléchargé, `pyproject.toml` MIT → `GPL-3.0-only`).
-  5. **Transparence exigée par l'utilisateur dans TOUS les messages** : développement **100 % IA, sans revue de code de sa part** (il ne maîtrise pas Python, résultats satisfaisants quand même), projet estimé à **moins de 25 % terminé**, appel explicite à des collaborateurs pour **auditer/architecturer**.
+  5. **Transparence exigée par l'utilisateur dans TOUS les messages** : développement **100 % IA** de sa part (il ne code pas en Python aujourd'hui), projet estimé à **moins de 25 % terminé**, appel explicite à des collaborateurs pour **auditer/architecturer**. *Révisé 20/11* : préciser qu'il **a été formé au développement il y a une dizaine d'années** et a donc **supervisé** le projet (cadrage, architecture, validation terrain) — pour éviter la question « pourquoi un projet aussi gros tout seul ».
 - **Fait (commits `f20d21f` puis `38bb6df`, dépôt passé PUBLIC via `gh repo edit`)** :
   - `LICENSE` (GPL-3.0) + `CONTRIBUTING.md` (mise en place `.venv`, ~160 tests, conventions : commits ASCII, code en français, zéro réseau, note Lexique 383 = CC BY-SA 4.0) ;
   - README : statut, avertissement transparence IA, phases 1-5 marquées terminées (roadmap avant périmée), sections Licence/Contribuer ;
